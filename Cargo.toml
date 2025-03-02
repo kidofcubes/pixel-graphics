@@ -1,0 +1,33 @@
+[package]
+name = "pixel-graphics"
+version = "0.0.1"
+edition = "2021"
+
+[features]
+default = ["egl", "glx", "x11", "wayland", "wgl"]
+egl = ["glutin-winit/egl", "png"]
+glx = ["glutin-winit/glx"]
+wgl = ["glutin-winit/wgl"]
+x11 = ["glutin-winit/x11"]
+wayland = ["glutin-winit/wayland", "winit/wayland-dlopen", "winit/wayland-csd-adwaita"]
+
+[dependencies]
+glutin = { version = "0.32.3", default-features = false }
+glutin-winit = { version = "0.5.0", default-features = false }
+png = { version = "0.17.6", optional = true }
+raw-window-handle = "0.6"
+winit = { version = "0.30.0", default-features = false, features = ["rwh_06"] }
+drm = { version = "0.12", optional = true }
+
+[build-dependencies]
+gl_generator = "0.14"
+cfg_aliases = "0.2.1"
+
+# Enable max optimizations for dependencies, but not for our code:
+[profile.dev.package."*"]
+opt-level = 3
+
+# Enable only a small amount of optimization in debug mode
+[profile.dev]
+opt-level = 1
+
