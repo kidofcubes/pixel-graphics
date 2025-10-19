@@ -1,5 +1,3 @@
-#version 460
-
 out vec2 texcoords;
 void main() {
     vec2 vertices[3]=vec2[3](vec2(-1,-1), vec2(3,-1), vec2(-1, 3));

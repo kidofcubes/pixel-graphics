@@ -29,7 +29,7 @@ pub mod gl {
     #![allow(clippy::all)]
     include!(concat!(env!("OUT_DIR"), "/gl_bindings.rs"));
 
-    pub use Gles2 as Gl;
+    // pub use Gl as Gl;
 }
 
 impl ApplicationHandler for App {
@@ -273,4 +273,8 @@ pub fn gl_config_picker(configs: Box<dyn Iterator<Item = Config> + '_>) -> Confi
             }
         })
         .unwrap()
+}
+
+pub fn pack4u8(r: u8, g: u8, b: u8, a: u8) -> u32 {
+    return ((((((r as u32) << 8) | (g as u32)) << 8) | (b as u32)) << 8) | (a as u32);
 }
