@@ -1,9 +1,9 @@
 #version 460
 #extension GL_EXT_gpu_shader4 : enable
-#define KEEP_FRAMES 50
+#define KEEP_FRAMES 100
 
-#define RESOLUTIONX 320
-#define RESOLUTIONY 180
+#define RESOLUTIONX 640
+#define RESOLUTIONY 360
 
 #define LIGHT_MAX_RADIUS 64.0
 #define LIGHT_MIN_DIST 100000.0

@@ -2,6 +2,7 @@ in vec2 texcoords;
 layout(location = 0) out vec4 pixelColor;
 uniform sampler2D fb0tex;
 uniform usampler2D scene;
+uniform int frame;
 
 #define FLT_MAX 3.402823466e+38
 #define FLT_MIN 1.175494351e-38
@@ -11,7 +12,7 @@ vec2 reversePathTracing(in ivec2 pos, in float seed){
 
     // local curX, curY = ray.startX, ray.startY
 //    float initSeed = noise2(float(1.0),seed);
-    float initSeed = noise2(float(1.0),seed);
+    float initSeed = noise2(float(frame),seed);
     vec2 initPos = vec2(pos);
     initPos.x += noise3(initSeed,initPos.x,initPos.y);
     initPos.y += noise3(initSeed,initPos.x,initPos.y);

@@ -6,6 +6,7 @@ use std::num::NonZeroU32;
 use std::ops::Deref;
 use std::os::raw::c_void;
 use std::path::{Path, PathBuf};
+use std::string::ToString;
 use gl::types::GLfloat;
 use raw_window_handle::HasWindowHandle;
 use winit::application::ApplicationHandler;
@@ -27,20 +28,60 @@ use crate::{gl, pack4u8};
 use crate::gl::types::{GLchar, GLenum, GLint, GLsizei, GLuint};
 use image::ImageReader;
 
+#[derive(Debug, Eq, PartialEq, Hash, Copy, Clone)]
+enum Texture {
+    Fb0Tex,
+    Scene,
+}
+impl Texture {
+    fn get_id(&self) -> &str {
+        match self{
+            Texture::Fb0Tex => "fb0tex",
+            Texture::Scene => "scene",
+        }
+    }
+}
+
+
+#[derive(Debug, Eq, PartialEq, Hash, Copy, Clone)]
+enum Uniform {
+    Frame
+}
+impl Uniform {
+    fn get_id(&self) -> &str {
+        match self{
+            Uniform::Frame => "frame",
+        }
+    }
+}
+
+#[derive(Debug, Eq, PartialEq, Hash, Copy, Clone)]
+enum Program {
+    Raytracing,
+    StretchedDisplay,
+}
+
+// const FB0TEX: &str = "raytracing_pass";
+// const RAYTRACING_PROGRAM: &str = "raytracing_pass";
+// const DISPLAY_PROGRAM: &str = "raytracing_pass";
+// const RAYTRACING_PASS: &str = "raytracing_pass";
+// const RAYTRACING_PASS: &str = "raytracing_pass";
+
 
 pub struct Renderer {
-    pass1: gl::types::GLuint,
-    pass2: gl::types::GLuint,
-    pass3: gl::types::GLuint,
+    // pass1: gl::types::GLuint,
+    // pass2: gl::types::GLuint,
+    // pass3: gl::types::GLuint,
     vao: gl::types::GLuint,
     // vbo: gl::types::GLuint,
     fb0: gl::types::GLuint,
-    fb0tex: gl::types::GLuint,
-    scene_tex: gl::types::GLuint,
+    // fb0tex: gl::types::GLuint,
+    // scene_tex: gl::types::GLuint,
     gl: gl::Gl,
-    // programs: HashMap<String, GLuint>,
-    // uniform_locations: HashMap<GLuint, HashMap<String, gl::types::GLuint>>,
-    frame: u32,
+    programs: HashMap<Program, GLuint>,
+    uniform_locations: HashMap<Program, HashMap<Uniform, GLint>>,
+    textures: HashMap<Texture, GLuint>,
+    frame: i32,
 }
 
 
@@ -74,11 +115,9 @@ impl Renderer {
                 println!("Shaders version on {}", shaders_version.to_string_lossy());
             }
 
-            let pass1 = create_program(&gl, &PathBuf::from("assets/stub_fullscreen.glsl"), &PathBuf::from("assets/raytracingfrag.glsl"));
-            // let pass1 = create_program(&gl, &PathBuf::from("assets/stub_fullscreen.glsl"), &PathBuf::from("assets/frag.glsl"));
-            let pass2 = create_program(&gl, &PathBuf::from("assets/stub_fullscreen.glsl"), &PathBuf::from("assets/frag.glsl"));
-            // let pass2 = pass1;
-            let pass3 = create_program(&gl, &PathBuf::from("assets/stub_fullscreen.glsl"), &PathBuf::from("assets/texturedisplayer.glsl"));
+            let mut programs: HashMap<Program, GLuint> = HashMap::new();
+            programs.insert(Program::Raytracing, create_program(&gl, &PathBuf::from("assets/stub_fullscreen.glsl"), &PathBuf::from("assets/raytracingfrag.glsl")) as GLuint);
+            programs.insert(Program::StretchedDisplay, create_program(&gl, &PathBuf::from("assets/stub_fullscreen.glsl"), &PathBuf::from("assets/texturedisplayer.glsl")) as GLuint);
 
             // println!("the original0 is {}",gl.GetError());
             let mut vao = std::mem::zeroed();
@@ -143,9 +182,11 @@ impl Renderer {
             println!("the original2 is {}",gl.GetError());
 
 
-            let mut scene_tex= std::mem::zeroed();
-            gl.GenTextures(1, &mut scene_tex);
-            gl.BindTexture(gl::TEXTURE_2D, scene_tex);
+            let mut textures: HashMap<Texture, GLuint> = HashMap::new();
+
+            textures.insert(Texture::Scene, std::mem::zeroed());
+            gl.GenTextures(1, textures.get_mut(&Texture::Scene).unwrap());
+            gl.BindTexture(gl::TEXTURE_2D, *textures.get(&Texture::Scene).unwrap());
             gl.TexImage2D(gl::TEXTURE_2D, 0,
                           0+gl::RGBA32UI as GLint,
                           // 0+gl::RGBA8UI as GLint,
@@ -168,9 +209,9 @@ impl Renderer {
             gl.GenFramebuffers(1, &mut fb0);
             gl.BindFramebuffer(gl::FRAMEBUFFER, fb0);
 
-            let mut fb0tex = std::mem::zeroed();
-            gl.GenTextures(1, &mut fb0tex);
-            gl.BindTexture(gl::TEXTURE_2D, fb0tex);
+            textures.insert(Texture::Fb0Tex, std::mem::zeroed());
+            gl.GenTextures(1, textures.get_mut(&Texture::Fb0Tex).unwrap());
+            gl.BindTexture(gl::TEXTURE_2D, *textures.get(&Texture::Fb0Tex).unwrap());
             gl.TexImage2D(gl::TEXTURE_2D, 0, gl::RGBA32F as GLint, width as GLsizei, height as GLsizei,
                           0,
                           0+gl::RGBA,
@@ -178,36 +219,59 @@ impl Renderer {
                           std::ptr::null());
             gl.TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_MIN_FILTER, gl::NEAREST as i32);
             gl.TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_MAG_FILTER, gl::NEAREST as i32);
-            gl.FramebufferTexture2D(gl::FRAMEBUFFER, gl::COLOR_ATTACHMENT0, gl::TEXTURE_2D, fb0tex, 0);
-
-            println!("the original2.2 is {}",gl.GetError());
-
-            gl.BindTextureUnit(0, scene_tex);
-            gl.BindSampler(0, nearest_sampler);
-            gl.BindTextureUnit(1, fb0tex);
-            gl.BindSampler(1, nearest_sampler);
+            gl.FramebufferTexture2D(gl::FRAMEBUFFER, gl::COLOR_ATTACHMENT0, gl::TEXTURE_2D, *textures.get(&Texture::Fb0Tex).unwrap(), 0);
 
             println!("the original2.2 is {}",gl.GetError());
 
 
+            // gl.BindTextureUnit(0, scene_tex);
+            // gl.BindSampler(0, nearest_sampler);
+            // gl.BindTextureUnit(1, fb0tex);
+            // gl.BindSampler(1, nearest_sampler);
+
+            println!("the original2.2 is {}",gl.GetError());
+
+
+            let mut texture_units = HashMap::new();
+
+            for (unit, value) in textures.iter().enumerate() {
+                gl.BindTextureUnit(unit as GLuint, *value.1);
+                gl.BindSampler(unit as GLuint, nearest_sampler);
+                texture_units.insert(*value.0, unit as GLint);
+
+            }
 
 
 
-            for (i,program) in [pass1, pass2, pass3].iter().enumerate() {
-                println!("=========CURRENTLY ON PROGRAM {} WHO IS AT {}",i,program);
-                for (key, value) in [("scene", 0), ("fb0tex", 1)] {
+            let mut uniform_locations = HashMap::new();
+
+            for (program_name,program) in programs.iter() {
+                println!("=========CURRENTLY ON PROGRAM {:?} WHO IS AT {}",program_name,program);
+                gl.UseProgram(*program);
+                for (texture, value) in textures.iter() {
                     println!("the before before thing is {}",gl.GetError());
-                    gl.UseProgram(*program);
                     println!("the before thing is {}",gl.GetError());
-                    let loc = gl.GetUniformLocation(*program, CString::new(key.clone().as_bytes().to_vec()).unwrap().as_ptr());
+                    let loc = gl.GetUniformLocation(*program, CString::new(texture.get_id().clone().as_bytes().to_vec()).unwrap().as_ptr());
                     if (loc != -1) {
-                        println!("the {} is in {} at {}", key, i, loc);
-                        gl.Uniform1i(loc, value);
+                        // println!("the {} is in {:?} at {}", key, program_name, loc);
+                        gl.Uniform1i(loc, *texture_units.get(texture).unwrap());
                     }else{
-                        println!("the {} is NOT in {}", key, i);
+                        // println!("the {} is NOT in {:?}", key, program_name);
                     }
                     println!("the after thing is {}",gl.GetError());
                 }
+
+
+                let mut uniforms = HashMap::new();
+                for uniform in [Uniform::Frame] {
+                    // gl.GetUniforms
+                    // set this up to string and all uniforms later maybe idk
+                    let loc = gl.GetUniformLocation(*program, CString::new(uniform.get_id().clone().as_bytes().to_vec()).unwrap().as_ptr());
+                    if(loc != -1) {
+                        uniforms.insert(uniform, loc as GLint);
+                    }
+                }
+                uniform_locations.insert(*program_name, uniforms);
             }
 
             println!("the original3 is {}",gl.GetError());
@@ -245,8 +309,26 @@ impl Renderer {
 
             // Self { program, vao, vbo, gl }
             // Self { program, vao, gl }
-            Self { pass1, pass2, pass3, vao, fb0, fb0tex, scene_tex, gl, frame: 0 }
+            // Self { pass1, pass2, pass3, vao, fb0, fb0tex, scene_tex, gl, frame: 0 }
+            Self {
+                programs,
+                uniform_locations,
+                textures,
+                vao,
+                fb0,
+                gl,
+                frame: 0
+            }
             // Self { program, gl }
+        }
+    }
+
+    pub unsafe fn update_uniforms(&self){
+        for (program_name, program) in self.programs.iter() {
+            self.gl.UseProgram(*program);
+            if let Some(loc) = self.uniform_locations.get(program_name).unwrap().get(&Uniform::Frame) {
+                self.gl.Uniform1i(*loc, self.frame);
+            }
         }
     }
 
@@ -263,6 +345,7 @@ impl Renderer {
         alpha: GLfloat,
     ) {
         unsafe {
+            self.update_uniforms();
             // println!("the thing0 is {}",self.gl.GetError());
             // println!("the thing1 is {}",self.gl.GetError());
 
@@ -272,7 +355,7 @@ impl Renderer {
             self.gl.Clear(gl::COLOR_BUFFER_BIT);
 
             // raytrace
-            self.gl.UseProgram(self.pass1);
+            self.gl.UseProgram(*self.programs.get(&Program::Raytracing).unwrap());
             self.gl.BindVertexArray(self.vao);
             // self.gl.BindBuffer(gl::ARRAY_BUFFER, self.vbo);
             // self.gl.BindFramebuffer(gl::FRAMEBUFFER, self.fb0);
@@ -282,7 +365,7 @@ impl Renderer {
 
 
             // display final
-            self.gl.UseProgram(self.pass3);
+            self.gl.UseProgram(*self.programs.get(&Program::StretchedDisplay).unwrap());
             self.gl.BindVertexArray(self.vao);
             self.gl.BindFramebuffer(gl::FRAMEBUFFER, 0);
             self.gl.DrawArrays(gl::TRIANGLES, 0, 3);
@@ -312,9 +395,9 @@ impl Deref for Renderer {
 impl Drop for Renderer {
     fn drop(&mut self) {
         unsafe {
-            self.gl.DeleteProgram(self.pass1);
-            self.gl.DeleteProgram(self.pass2);
-            self.gl.DeleteProgram(self.pass3);
+            // self.gl.DeleteProgram(self.pass1);
+            // self.gl.DeleteProgram(self.pass2);
+            // self.gl.DeleteProgram(self.pass3);
             // self.gl.DeleteBuffers(1, &self.vbo);
             self.gl.DeleteVertexArrays(1, &self.vao);
         }
