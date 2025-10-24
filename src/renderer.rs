@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::error::Error;
 use std::ffi::{CStr, CString};
 use std::fs;
@@ -23,7 +24,7 @@ use glutin::surface::{Surface, SwapInterval, WindowSurface};
 
 use glutin_winit::{DisplayBuilder, GlWindow};
 use crate::{gl, pack4u8};
-use crate::gl::types::{GLenum, GLint, GLsizei, GLuint};
+use crate::gl::types::{GLchar, GLenum, GLint, GLsizei, GLuint};
 use image::ImageReader;
 
 
@@ -37,6 +38,9 @@ pub struct Renderer {
     fb0tex: gl::types::GLuint,
     scene_tex: gl::types::GLuint,
     gl: gl::Gl,
+    // programs: HashMap<String, GLuint>,
+    // uniform_locations: HashMap<GLuint, HashMap<String, gl::types::GLuint>>,
+    frame: u32,
 }
 
 
@@ -47,6 +51,17 @@ impl Renderer {
                 let symbol = CString::new(symbol).unwrap();
                 gl_display.get_proc_address(symbol.as_c_str()).cast()
             });
+            gl.Enable(gl::DEBUG_OUTPUT);
+            gl.Enable(gl::DEBUG_OUTPUT_SYNCHRONOUS);
+            gl.DebugMessageCallback(Some(debug_callback), std::ptr::null());
+            gl.DebugMessageControl(
+                gl::DONT_CARE,
+                gl::DONT_CARE,
+                gl::DONT_CARE,
+                0,
+                std::ptr::null(),
+                gl::TRUE,
+            );
 
             if let Some(renderer) = get_gl_string(&gl, gl::RENDERER) {
                 println!("Running on {}", renderer.to_string_lossy());
@@ -59,11 +74,11 @@ impl Renderer {
                 println!("Shaders version on {}", shaders_version.to_string_lossy());
             }
 
-            let pass1 = create_program(&gl, &PathBuf::from("assets/stub_fullscreen.glsl"), &PathBuf::from("assets/frag.glsl"));
-            // let pass2 = create_program(&gl, &PathBuf::from("assets/stub_fullscreen.glsl"), &PathBuf::from("assets/frag.glsl"));
-            // let pass3 = create_program(&gl, &PathBuf::from("assets/stub_fullscreen.glsl"), &PathBuf::from("assets/frag.glsl"));
-            let pass2 = pass1;
-            let pass3 = pass1;
+            let pass1 = create_program(&gl, &PathBuf::from("assets/stub_fullscreen.glsl"), &PathBuf::from("assets/raytracingfrag.glsl"));
+            // let pass1 = create_program(&gl, &PathBuf::from("assets/stub_fullscreen.glsl"), &PathBuf::from("assets/frag.glsl"));
+            let pass2 = create_program(&gl, &PathBuf::from("assets/stub_fullscreen.glsl"), &PathBuf::from("assets/frag.glsl"));
+            // let pass2 = pass1;
+            let pass3 = create_program(&gl, &PathBuf::from("assets/stub_fullscreen.glsl"), &PathBuf::from("assets/texturedisplayer.glsl"));
 
             // println!("the original0 is {}",gl.GetError());
             let mut vao = std::mem::zeroed();
@@ -71,6 +86,8 @@ impl Renderer {
             gl.GenVertexArrays(1, &mut vao);
             // println!("the original2 is {}",gl.GetError());
             gl.BindVertexArray(vao);
+
+            println!("the original1 is {}",gl.GetError());
 
 
             let mut nearest_sampler = std::mem::zeroed();
@@ -88,6 +105,8 @@ impl Renderer {
             // let rgba = img.to_rgba8();
             let rgba = img.to_rgba8();
             let rgba_unprocessed: Vec<u32> = img.to_rgba8().iter().map(|x| {*x as u32}).collect();
+            let mut count1 = 0;
+            let mut count2 = 0;
             let rgba_processed: Vec<u32> =
                 rgba.chunks_exact(4)
                 .flat_map(|px| {
@@ -98,25 +117,30 @@ impl Renderer {
                     let mut a: u8 = px[3];
                     let mut emissiveness: f32 = 0.0;
                     let mut opacity: f32 = 0.0;
-                    // if px[3] < 253 {
-                    //     opacity = 0.0;
-                    // }else{
-                    //     opacity = 1.0;
-                    //     if f32::sqrt(((px[0] as f32)*(px[0] as f32))+((px[1] as f32)*(px[1] as f32))+((px[2] as f32)*(px[2] as f32)))  > 358.0 {
-                    //         emissiveness = 100.0;
-                    //     }else{
-                    //         r = 255;
-                    //         g = 0;
-                    //         b = 255;
-                    //     }
-                    // }
-                    a = 255;
+                    if a < 253 {
+                        opacity = 0.0;
+                        count1+=1;
+                    }else{
+                        count2+=1;
+                        opacity = 1.0;
+                        // if f32::sqrt(((px[0] as f32)*(px[0] as f32))+((px[1] as f32)*(px[1] as f32))+((px[2] as f32)*(px[2] as f32)))  > 358.0 {
+                        if f32::sqrt(((r as f32)*(r as f32))+((g as f32)*(g as f32))+((b as f32)*(b as f32)))  > 358.0 {
+                            emissiveness = 100.0;
+                        }else{
+                            r = 255;
+                            g = 0;
+                            b = 255;
+                        }
+                    }
+                    a = 128;
 
 
-                    // return Vec::from([pack4u8(r,g,b,a), emissiveness.to_bits(), opacity.to_bits(), 0]);
-                    return Vec::from([r as u32,g as u32,b as u32,a as u32]);
+                    return Vec::from([pack4u8(r,g,b,a), emissiveness.to_bits(), opacity.to_bits(), 0]);
+                    // return Vec::from([r as u32,g as u32,b as u32,a as u32]);
                 })
                 .collect();
+            // println!("count1 and 2 {} {}",count1, count2);
+            println!("the original2 is {}",gl.GetError());
 
 
             let mut scene_tex= std::mem::zeroed();
@@ -129,9 +153,11 @@ impl Renderer {
                           0,
                           0+gl::RGBA_INTEGER,
                           0+gl::UNSIGNED_INT, //???
-                          rgba_unprocessed.as_ptr() as *const c_void);
+                          rgba_processed.as_ptr() as *const c_void);
             gl.TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_MIN_FILTER, gl::NEAREST as i32);
             gl.TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_MAG_FILTER, gl::NEAREST as i32);
+
+            println!("the original2.1 is {}",gl.GetError());
 
 
 
@@ -154,26 +180,37 @@ impl Renderer {
             gl.TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_MAG_FILTER, gl::NEAREST as i32);
             gl.FramebufferTexture2D(gl::FRAMEBUFFER, gl::COLOR_ATTACHMENT0, gl::TEXTURE_2D, fb0tex, 0);
 
+            println!("the original2.2 is {}",gl.GetError());
 
             gl.BindTextureUnit(0, scene_tex);
             gl.BindSampler(0, nearest_sampler);
             gl.BindTextureUnit(1, fb0tex);
             gl.BindSampler(1, nearest_sampler);
 
+            println!("the original2.2 is {}",gl.GetError());
+
 
 
 
 
             for (i,program) in [pass1, pass2, pass3].iter().enumerate() {
-                let scene_loc = gl.GetUniformLocation(*program, CString::new("scene").unwrap().as_ptr());
-                println!("is the sceneloc -1? {}", (scene_loc == -1));
-                println!("current program is {}",i);
-                if (scene_loc != -1) {
-                    gl.Uniform1i(scene_loc, 0);
+                println!("=========CURRENTLY ON PROGRAM {} WHO IS AT {}",i,program);
+                for (key, value) in [("scene", 0), ("fb0tex", 1)] {
+                    println!("the before before thing is {}",gl.GetError());
+                    gl.UseProgram(*program);
+                    println!("the before thing is {}",gl.GetError());
+                    let loc = gl.GetUniformLocation(*program, CString::new(key.clone().as_bytes().to_vec()).unwrap().as_ptr());
+                    if (loc != -1) {
+                        println!("the {} is in {} at {}", key, i, loc);
+                        gl.Uniform1i(loc, value);
+                    }else{
+                        println!("the {} is NOT in {}", key, i);
+                    }
+                    println!("the after thing is {}",gl.GetError());
                 }
             }
 
-            // println!("the original3 is {}",gl.GetError());
+            println!("the original3 is {}",gl.GetError());
 
             // let mut vbo = std::mem::zeroed();
             // gl.GenBuffers(1, &mut vbo);
@@ -208,13 +245,14 @@ impl Renderer {
 
             // Self { program, vao, vbo, gl }
             // Self { program, vao, gl }
-            Self { pass1, pass2, pass3, vao, fb0, fb0tex, scene_tex, gl }
+            Self { pass1, pass2, pass3, vao, fb0, fb0tex, scene_tex, gl, frame: 0 }
             // Self { program, gl }
         }
     }
 
-    pub fn draw(&self) {
-        self.draw_with_clear_color(0.0, 0.0, 0.0, 0.7)
+    pub fn draw(&mut self) {
+        self.draw_with_clear_color(0.0, 0.0, 0.0, 0.7);
+        self.frame=self.frame+1;
     }
 
     pub fn draw_with_clear_color(
@@ -229,15 +267,26 @@ impl Renderer {
             // println!("the thing1 is {}",self.gl.GetError());
 
 
+            self.gl.BindFramebuffer(gl::FRAMEBUFFER, 0);
             self.gl.ClearColor(red, green, blue, alpha);
             self.gl.Clear(gl::COLOR_BUFFER_BIT);
 
+            // raytrace
             self.gl.UseProgram(self.pass1);
             self.gl.BindVertexArray(self.vao);
             // self.gl.BindBuffer(gl::ARRAY_BUFFER, self.vbo);
             // self.gl.BindFramebuffer(gl::FRAMEBUFFER, self.fb0);
+            self.gl.BindFramebuffer(gl::FRAMEBUFFER, self.fb0);
+            self.gl.DrawArrays(gl::TRIANGLES, 0, 3);
+            // raytrace END
+
+
+            // display final
+            self.gl.UseProgram(self.pass3);
+            self.gl.BindVertexArray(self.vao);
             self.gl.BindFramebuffer(gl::FRAMEBUFFER, 0);
             self.gl.DrawArrays(gl::TRIANGLES, 0, 3);
+            // display final END
 
 
             // println!("the thing3 is {}",self.gl.GetError());
@@ -277,23 +326,23 @@ unsafe fn create_program(
     vertex_shader: &Path,
     fragment_shader: &Path,
 ) -> GLuint {
-    // println!("the original-8 is {}",gl.GetError());
+    println!("the original-8 is {}",gl.GetError());
     // let vertex_shader = create_shader(&gl, gl::VERTEX_SHADER, &PathBuf::from("assets/stub_fullscreen.glsl"));
     let vertex_shader = create_shader(&gl, gl::VERTEX_SHADER, vertex_shader);
-    // println!("the original-7 is {}",gl.GetError());
+    println!("the original-7 is {}",gl.GetError());
     let fragment_shader = create_shader(&gl, gl::FRAGMENT_SHADER, fragment_shader);
-    // println!("the original-6 is {}",gl.GetError());
+    println!("the original-6 is {}",gl.GetError());
 
-    let pass1 = gl.CreateProgram();
-    // println!("the original-5 is {}",gl.GetError());
+    let program = gl.CreateProgram();
+    println!("the original-5 is {}",gl.GetError());
 
-    gl.AttachShader(pass1, vertex_shader);
-    // println!("the original-4 is {}",gl.GetError());
-    gl.AttachShader(pass1, fragment_shader);
-    // println!("the original-3 is {}",gl.GetError());
+    gl.AttachShader(program, vertex_shader);
+    println!("the original-4 is {}",gl.GetError());
+    gl.AttachShader(program, fragment_shader);
+    println!("the original-3 is {}",gl.GetError());
 
-    gl.LinkProgram(pass1);
-    // println!("the original-2 is {}",gl.GetError());
+    gl.LinkProgram(program);
+    println!("the original-2 is {}",gl.GetError());
 
     // println!("the original-1 is {}",gl.GetError());
 
@@ -302,10 +351,11 @@ unsafe fn create_program(
     gl.GetShaderInfoLog(fragment_shader,12345, &mut info_used_length, logs.as_mut_ptr() as *mut _);
     logs.set_len(info_used_length as usize);
     println!("the error is {}",String::from_utf8(logs).unwrap());
+    println!("the original-1 is {}",gl.GetError());
 
-    gl.DeleteShader(vertex_shader);
-    gl.DeleteShader(fragment_shader);
-    return pass1;
+    // gl.DeleteShader(vertex_shader);
+    // gl.DeleteShader(fragment_shader);
+    return program;
 }
 
 unsafe fn create_shader(
@@ -318,17 +368,33 @@ unsafe fn create_shader(
     // println!("the compiling0 is {}",gl.GetError());
     let shader = gl.CreateShader(shader);
     // println!("the compiling1 is {}",gl.GetError());
-    let mut shader_source: String = fs::read_to_string("assets/common.glsl").unwrap();
-    shader_source.push_str("\n");
-    shader_source.push_str(&fs::read_to_string(path).unwrap());
 
-    println!("the shader source is {}", shader_source);
-    gl.ShaderSource(shader, 1, [shader_source.as_bytes().as_ptr().cast()].as_ptr(), std::ptr::null());
+
+    // println!("the shader source is {}", shader_source);
+    gl.ShaderSource(shader, 1, [get_shader_source(path).as_bytes().as_ptr().cast()].as_ptr(), std::ptr::null());
     // gl.ShaderSource(shader, 1, [source.as_ptr().cast()].as_ptr(), std::ptr::null());
     // println!("the compiling2 is {}",gl.GetError());
     gl.CompileShader(shader);
+
+    let mut logs: Vec<u8> = Vec::with_capacity(12345);
+    let mut info_used_length: GLint = 0;
+    gl.GetShaderInfoLog(shader,12345, &mut info_used_length, logs.as_mut_ptr() as *mut _);
+    logs.set_len(info_used_length as usize);
+    println!("the postcreateshader error is {}",String::from_utf8(logs).unwrap());
+    println!("the postcreateshader+1 is {}",gl.GetError());
     // println!("the compiling3 is {}",gl.GetError());
     shader
+}
+
+fn get_shader_source(
+    path: &Path,
+) -> String {
+    let mut shader_source: String = fs::read_to_string("assets/common.glsl").unwrap();
+    shader_source.push_str("\n");
+    shader_source.push_str(&fs::read_to_string(path).unwrap());
+    shader_source = shader_source.replace(char::from(0),"");
+    shader_source.push('\0');
+    return shader_source;
 }
 
 fn get_gl_string(gl: &gl::Gl, variant: gl::types::GLenum) -> Option<&'static CStr> {
@@ -338,3 +404,39 @@ fn get_gl_string(gl: &gl::Gl, variant: gl::types::GLenum) -> Option<&'static CSt
     }
 }
 
+
+extern "system" fn debug_callback(
+    source: GLenum,
+    _type: GLenum,
+    id: GLuint,
+    severity: GLenum,
+    _length: GLsizei,
+    message: *const GLchar,
+    _user_param: *mut c_void,
+) {
+    unsafe {
+        let msg = CStr::from_ptr(message).to_string_lossy();
+
+        let src = match source {
+            gl::DEBUG_SOURCE_API => "API",
+            gl::DEBUG_SOURCE_WINDOW_SYSTEM => "WINDOW SYSTEM",
+            gl::DEBUG_SOURCE_SHADER_COMPILER => "SHADER COMPILER",
+            gl::DEBUG_SOURCE_THIRD_PARTY => "THIRD PARTY",
+            gl::DEBUG_SOURCE_APPLICATION => "APPLICATION",
+            gl::DEBUG_SOURCE_OTHER => "OTHER",
+            _ => "UNKNOWN",
+        };
+
+        let sev = match severity {
+            gl::DEBUG_SEVERITY_HIGH => "HIGH",
+            gl::DEBUG_SEVERITY_MEDIUM => "MEDIUM",
+            gl::DEBUG_SEVERITY_LOW => "LOW",
+            gl::DEBUG_SEVERITY_NOTIFICATION => "NOTIFICATION",
+            _ => "UNKNOWN",
+        };
+
+        println!(
+            "[GL DEBUG][{src}][{sev}] (id={id}): {msg}"
+        );
+    }
+}

@@ -170,7 +170,7 @@ impl ApplicationHandler for App {
     fn about_to_wait(&mut self, _event_loop: &ActiveEventLoop) {
         if let Some(AppState { gl_surface, window }) = self.state.as_ref() {
             let gl_context = self.gl_context.as_ref().unwrap();
-            let renderer = self.renderer.as_ref().unwrap();
+            let renderer: &mut Renderer = self.renderer.as_mut().unwrap();
             renderer.draw();
             window.request_redraw();
 
@@ -183,17 +183,18 @@ fn create_gl_context(window: &Window, gl_config: &Config) -> NotCurrentContext {
     let raw_window_handle = window.window_handle().ok().map(|wh| wh.as_raw());
 
     // The context creation part.
-    let context_attributes = ContextAttributesBuilder::new().build(raw_window_handle);
+    // let context_attributes = ContextAttributesBuilder::new().build(raw_window_handle);
+    let context_attributes = ContextAttributesBuilder::new().with_debug(true).build(raw_window_handle);
 
     // Since glutin by default tries to create OpenGL core context, which may not be
     // present we should try gles.
-    let fallback_context_attributes = ContextAttributesBuilder::new()
+    let fallback_context_attributes = ContextAttributesBuilder::new().with_debug(true)
         .with_context_api(ContextApi::Gles(None))
         .build(raw_window_handle);
 
     // There are also some old devices that support neither modern OpenGL nor GLES.
     // To support these we can try and create a 2.1 context.
-    let legacy_context_attributes = ContextAttributesBuilder::new()
+    let legacy_context_attributes = ContextAttributesBuilder::new().with_debug(true)
         .with_context_api(ContextApi::OpenGl(Some(Version::new(2, 1))))
         .build(raw_window_handle);
 
@@ -276,5 +277,5 @@ pub fn gl_config_picker(configs: Box<dyn Iterator<Item = Config> + '_>) -> Confi
 }
 
 pub fn pack4u8(r: u8, g: u8, b: u8, a: u8) -> u32 {
-    return ((((((r as u32) << 8) | (g as u32)) << 8) | (b as u32)) << 8) | (a as u32);
+    return ((((((a as u32) << 8) | (b as u32)) << 8) | (g as u32)) << 8) | (r as u32);
 }
