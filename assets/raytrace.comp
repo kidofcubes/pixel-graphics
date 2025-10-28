@@ -1,0 +1,35 @@
+//layout (local_size_x = 640*360, local_size_y = 1, local_size_z = 1) in;
+layout (local_size_x = 640, local_size_y = 1, local_size_z = 1) in;
+//layout (local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
+//uniform usampler2D scene;
+uniform int frame;
+//uniform sampler1D ;
+//uniform uimage2D sumR; // integer accumulator R
+//uniform uimage2D sumG; // integer accumulator G
+//uniform uimage2D sumB; // integer accumulator B
+
+layout (r32ui, binding = 0) uniform uimage2D computeAccu; // integer hit count
+//layout (rgba32f, binding = 0) uniform image2D computeAccu; // integer hit count
+
+void main(){
+//    ivec2 pos = ivec2(gl_GlobalInvocationID.xy);
+//    imageStore(computeAccu, pos, uvec4(255u));
+////    imageStore(computeAccu, pos, uvec4(255u));
+//    imageStore(computeAccu, pos, vec4(1.0));
+//    imageAtomicAdd(computeAccu,pos,1u);
+
+
+
+
+    uint idx = gl_GlobalInvocationID.x;
+//
+    float randomDir = noise2(float(idx),float(frame))*2.0*PI;
+////    vec2 dir = vec2(cos(randomDir),sin(randomDir));
+//
+    ivec2 pos = ivec2(
+        floor(noise1(randomDir,float(frame))*float(RESOLUTIONX)),
+        floor(noise2(randomDir,float(frame))*float(RESOLUTIONY))
+    );
+//    pos = ivec2(0,0);
+    imageAtomicAdd(computeAccu,pos,1u);
+}

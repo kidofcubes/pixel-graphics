@@ -32,12 +32,14 @@ use image::ImageReader;
 enum Texture {
     Fb0Tex,
     Scene,
+    ComputeAccu,
 }
 impl Texture {
     fn get_id(&self) -> &str {
         match self{
             Texture::Fb0Tex => "fb0tex",
             Texture::Scene => "scene",
+            Texture::ComputeAccu => "computeAccu",
         }
     }
 }
@@ -59,24 +61,15 @@ impl Uniform {
 enum Program {
     Raytracing,
     StretchedDisplay,
+    ComputeRaytracing,
+    FragTest
 }
-
-// const FB0TEX: &str = "raytracing_pass";
-// const RAYTRACING_PROGRAM: &str = "raytracing_pass";
-// const DISPLAY_PROGRAM: &str = "raytracing_pass";
-// const RAYTRACING_PASS: &str = "raytracing_pass";
-// const RAYTRACING_PASS: &str = "raytracing_pass";
 
 
 pub struct Renderer {
-    // pass1: gl::types::GLuint,
-    // pass2: gl::types::GLuint,
-    // pass3: gl::types::GLuint,
     vao: gl::types::GLuint,
     // vbo: gl::types::GLuint,
     fb0: gl::types::GLuint,
-    // fb0tex: gl::types::GLuint,
-    // scene_tex: gl::types::GLuint,
     gl: gl::Gl,
     programs: HashMap<Program, GLuint>,
     uniform_locations: HashMap<Program, HashMap<Uniform, GLint>>,
@@ -118,6 +111,7 @@ impl Renderer {
             let mut programs: HashMap<Program, GLuint> = HashMap::new();
             programs.insert(Program::Raytracing, create_program(&gl, &PathBuf::from("assets/stub_fullscreen.glsl"), &PathBuf::from("assets/raytracingfrag.glsl")) as GLuint);
             programs.insert(Program::StretchedDisplay, create_program(&gl, &PathBuf::from("assets/stub_fullscreen.glsl"), &PathBuf::from("assets/texturedisplayer.glsl")) as GLuint);
+            programs.insert(Program::FragTest, create_program(&gl, &PathBuf::from("assets/stub_fullscreen.glsl"), &PathBuf::from("assets/frag.glsl")) as GLuint);
 
             // println!("the original0 is {}",gl.GetError());
             let mut vao = std::mem::zeroed();
@@ -224,6 +218,47 @@ impl Renderer {
             println!("the original2.2 is {}",gl.GetError());
 
 
+            textures.insert(Texture::ComputeAccu, std::mem::zeroed());
+            gl.GenTextures(1, textures.get_mut(&Texture::ComputeAccu).unwrap());
+            gl.BindTexture(gl::TEXTURE_2D, *textures.get(&Texture::ComputeAccu).unwrap());
+            gl.TexImage2D(gl::TEXTURE_2D, 0,
+                          0+gl::R32UI as GLint,
+                          // 0+gl::RGBA32F as GLint,
+                          width as GLsizei,height as GLsizei,
+                          0,
+                          0+gl::RED_INTEGER,
+                          // 0+gl::RGBA,
+                          0+gl::UNSIGNED_INT, //???
+                          // 0+gl::FLOAT, //???
+                          std::ptr::null());
+            gl.TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_MIN_FILTER, gl::NEAREST as i32);
+            gl.TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_MAG_FILTER, gl::NEAREST as i32);
+            gl.BindImageTexture(0,
+                                *textures.get(&Texture::ComputeAccu).unwrap(),
+                                0,
+                                gl::FALSE,
+                                0,
+                                gl::READ_WRITE,
+                                0+gl::R32UI
+                                // 0+gl::RGBA32F
+            );
+
+
+
+            let compute_shader = create_shader(&gl, gl::COMPUTE_SHADER, &PathBuf::from("assets/raytrace.comp"));
+
+
+            let compute_program = gl.CreateProgram();
+            gl.AttachShader(compute_program, compute_shader);
+            println!("the original-4 is {}",gl.GetError());
+            gl.LinkProgram(compute_program);
+            println!("the original-2 is {}",gl.GetError());
+            programs.insert(Program::ComputeRaytracing, compute_program);
+
+
+
+
+
             // gl.BindTextureUnit(0, scene_tex);
             // gl.BindSampler(0, nearest_sampler);
             // gl.BindTextureUnit(1, fb0tex);
@@ -232,12 +267,23 @@ impl Renderer {
             println!("the original2.2 is {}",gl.GetError());
 
 
-            let mut texture_units = HashMap::new();
+            let mut one_time = HashMap::new();
 
             for (unit, value) in textures.iter().enumerate() {
                 gl.BindTextureUnit(unit as GLuint, *value.1);
                 gl.BindSampler(unit as GLuint, nearest_sampler);
-                texture_units.insert(*value.0, unit as GLint);
+                if *value.0 == Texture::ComputeAccu {
+                    gl.BindImageTexture(unit as GLuint,
+                                             *textures.get(&Texture::ComputeAccu).unwrap(),
+                                             0,
+                                             gl::FALSE,
+                                             0,
+                                             gl::READ_WRITE,
+                                             // 0+gl::R32UI
+                                             0+gl::R32UI
+                    );
+                }
+                one_time.insert(*value.0, unit as GLint);
 
             }
 
@@ -249,12 +295,16 @@ impl Renderer {
                 println!("=========CURRENTLY ON PROGRAM {:?} WHO IS AT {}",program_name,program);
                 gl.UseProgram(*program);
                 for (texture, value) in textures.iter() {
+                    // if *program_name==Program::ComputeRaytracing {
+                    //     continue;
+                    // }
                     println!("the before before thing is {}",gl.GetError());
                     println!("the before thing is {}",gl.GetError());
                     let loc = gl.GetUniformLocation(*program, CString::new(texture.get_id().clone().as_bytes().to_vec()).unwrap().as_ptr());
                     if (loc != -1) {
                         // println!("the {} is in {:?} at {}", key, program_name, loc);
-                        gl.Uniform1i(loc, *texture_units.get(texture).unwrap());
+                        println!("found a {:?} in program {:?} at location {}", texture, program_name, loc);
+                        gl.Uniform1i(loc, *one_time.get(texture).unwrap());
                     }else{
                         // println!("the {} is NOT in {:?}", key, program_name);
                     }
@@ -354,22 +404,31 @@ impl Renderer {
             self.gl.ClearColor(red, green, blue, alpha);
             self.gl.Clear(gl::COLOR_BUFFER_BIT);
 
-            // raytrace
-            self.gl.UseProgram(*self.programs.get(&Program::Raytracing).unwrap());
-            self.gl.BindVertexArray(self.vao);
-            // self.gl.BindBuffer(gl::ARRAY_BUFFER, self.vbo);
-            // self.gl.BindFramebuffer(gl::FRAMEBUFFER, self.fb0);
-            self.gl.BindFramebuffer(gl::FRAMEBUFFER, self.fb0);
-            self.gl.DrawArrays(gl::TRIANGLES, 0, 3);
-            // raytrace END
+            self.gl.UseProgram(*self.programs.get(&Program::ComputeRaytracing).unwrap());
+            self.gl.DispatchCompute(100,1,1);
+            self.gl.MemoryBarrier(gl::SHADER_IMAGE_ACCESS_BARRIER_BIT);
 
-
-            // display final
-            self.gl.UseProgram(*self.programs.get(&Program::StretchedDisplay).unwrap());
+            self.gl.UseProgram(*self.programs.get(&Program::FragTest).unwrap());
             self.gl.BindVertexArray(self.vao);
             self.gl.BindFramebuffer(gl::FRAMEBUFFER, 0);
             self.gl.DrawArrays(gl::TRIANGLES, 0, 3);
-            // display final END
+
+            // // raytrace
+            // self.gl.UseProgram(*self.programs.get(&Program::Raytracing).unwrap());
+            // self.gl.BindVertexArray(self.vao);
+            // // self.gl.BindBuffer(gl::ARRAY_BUFFER, self.vbo);
+            // // self.gl.BindFramebuffer(gl::FRAMEBUFFER, self.fb0);
+            // self.gl.BindFramebuffer(gl::FRAMEBUFFER, self.fb0);
+            // self.gl.DrawArrays(gl::TRIANGLES, 0, 3);
+            // // raytrace END
+            //
+            //
+            // // display final
+            // self.gl.UseProgram(*self.programs.get(&Program::StretchedDisplay).unwrap());
+            // self.gl.BindVertexArray(self.vao);
+            // self.gl.BindFramebuffer(gl::FRAMEBUFFER, 0);
+            // self.gl.DrawArrays(gl::TRIANGLES, 0, 3);
+            // // display final END
 
 
             // println!("the thing3 is {}",self.gl.GetError());
@@ -463,7 +522,7 @@ unsafe fn create_shader(
     let mut info_used_length: GLint = 0;
     gl.GetShaderInfoLog(shader,12345, &mut info_used_length, logs.as_mut_ptr() as *mut _);
     logs.set_len(info_used_length as usize);
-    println!("the postcreateshader error is {}",String::from_utf8(logs).unwrap());
+    println!("the postcreateshader error for {:?} is {}",path,String::from_utf8(logs).unwrap());
     println!("the postcreateshader+1 is {}",gl.GetError());
     // println!("the compiling3 is {}",gl.GetError());
     shader
