@@ -1452,6 +1452,7 @@ dependencies = [
  "gl_generator",
  "glutin",
  "glutin-winit",
+ "half",
  "image",
  "png 0.17.16",
  "raw-window-handle",

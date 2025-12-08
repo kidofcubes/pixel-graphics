@@ -2,7 +2,8 @@
 in vec2 texcoords;
 layout(location = 0) out vec4 pixelColor;
 //uniform usampler2D scene;
-uniform usampler2D computeAccu; // integer hit count
+//uniform usampler2D computeAccu; // integer hit count
+uniform sampler2D fb0tex;
 
 void main() {
     // gl_FragColor = vec4(v_color, 1.0);
@@ -29,8 +30,11 @@ void main() {
 //    uvec4 value = texelFetch(computeAccu, pos, 0);
 //    uvec4 value = texture(computeAccu, texcoords.xy, 0);
 //    vec4 value = texture(computeAccu, texcoords.xy, 0);
-    uvec4 value = texture(computeAccu, texcoords.xy, 0);
-    color_data.rgb = vec3(float(value.x)/100.0);
+//    uvec4 value = texture(computeAccu, texcoords.xy, 0);
+//    uvec4 light_value = texelFetch(computeAccu, pos, 0);
+    vec4 value = texture(fb0tex, texcoords.xy, 0);
+    color_data = value;
+//    color_data.rgb = vec3(float(value.x)/100.0);
 //    color_data.r = 0.1;
 //    color_data.g = 0.1;
 //    color_data.b = 0.1;

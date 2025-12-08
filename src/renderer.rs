@@ -24,7 +24,8 @@ use glutin::prelude::*;
 use glutin::surface::{Surface, SwapInterval, WindowSurface};
 
 use glutin_winit::{DisplayBuilder, GlWindow};
-use crate::{gl, pack4u8};
+use half::f16;
+use crate::{gl, pack2f16, pack4u8};
 use crate::gl::types::{GLchar, GLenum, GLint, GLsizei, GLuint};
 use image::ImageReader;
 
@@ -62,7 +63,8 @@ enum Program {
     Raytracing,
     StretchedDisplay,
     ComputeRaytracing,
-    FragTest
+    FragTest,
+    Accumulation,
 }
 
 
@@ -112,6 +114,7 @@ impl Renderer {
             programs.insert(Program::Raytracing, create_program(&gl, &PathBuf::from("assets/stub_fullscreen.glsl"), &PathBuf::from("assets/raytracingfrag.glsl")) as GLuint);
             programs.insert(Program::StretchedDisplay, create_program(&gl, &PathBuf::from("assets/stub_fullscreen.glsl"), &PathBuf::from("assets/texturedisplayer.glsl")) as GLuint);
             programs.insert(Program::FragTest, create_program(&gl, &PathBuf::from("assets/stub_fullscreen.glsl"), &PathBuf::from("assets/frag.glsl")) as GLuint);
+            programs.insert(Program::Accumulation, create_program(&gl, &PathBuf::from("assets/stub_fullscreen.glsl"), &PathBuf::from("assets/accumulation.frag")) as GLuint);
 
             // println!("the original0 is {}",gl.GetError());
             let mut vao = std::mem::zeroed();
@@ -131,7 +134,8 @@ impl Renderer {
 
 
             // let img = ImageReader::open("assets/rgbanoise320x180.png").unwrap().decode().unwrap();
-            let img = ImageReader::open("assets/rgbanoise640x360.png").unwrap().decode().unwrap();
+            // let img = ImageReader::open("assets/rgbanoise640x360.png").unwrap().decode().unwrap();
+            let img = ImageReader::open("assets/scene640x360.png").unwrap().decode().unwrap();
             let img = img.flipv();
             let width = img.width();
             let height = img.height();
@@ -149,26 +153,49 @@ impl Renderer {
                     let mut b: u8 = px[2];
                     let mut a: u8 = px[3];
                     let mut emissiveness: f32 = 0.0;
-                    let mut opacity: f32 = 0.0;
-                    if a < 253 {
-                        opacity = 0.0;
-                        count1+=1;
-                    }else{
-                        count2+=1;
-                        opacity = 1.0;
-                        // if f32::sqrt(((px[0] as f32)*(px[0] as f32))+((px[1] as f32)*(px[1] as f32))+((px[2] as f32)*(px[2] as f32)))  > 358.0 {
-                        if f32::sqrt(((r as f32)*(r as f32))+((g as f32)*(g as f32))+((b as f32)*(b as f32)))  > 358.0 {
-                            emissiveness = 100.0;
-                        }else{
-                            r = 255;
-                            g = 0;
-                            b = 255;
-                        }
+                    let mut reflectiveness: f32 = 1.0;
+                    let mut diffusionness: f32 = 0.0;
+                    let mut opacity: f32 = 0.5;
+                    let mut passthrough_chance:f32 = 0.1;
+                    if(r==255 && g==255 && b==255){
+                        emissiveness = 1.0;
                     }
+                    if(a==0){
+                        opacity = 0.001;
+                        passthrough_chance = 0.9;
+                        reflectiveness = 0.0;
+                        diffusionness = 1.0;
+                        r = 32;
+                        g = 32;
+                        b = 32;
+                    }
+
+
+                    // if a < 253 {
+                    //     opacity = 0.0;
+                    //     count1+=1;
+                    // }else{
+                    //     count2+=1;
+                    //     opacity = 1.0;
+                    //     // if f32::sqrt(((px[0] as f32)*(px[0] as f32))+((px[1] as f32)*(px[1] as f32))+((px[2] as f32)*(px[2] as f32)))  > 358.0 {
+                    //     if f32::sqrt(((r as f32)*(r as f32))+((g as f32)*(g as f32))+((b as f32)*(b as f32)))  > 358.0 {
+                    //         emissiveness = 100.0;
+                    //     }else{
+                    //         r = 255;
+                    //         g = 0;
+                    //         b = 255;
+                    //     }
+                    // }
                     a = 128;
 
 
-                    return Vec::from([pack4u8(r,g,b,a), emissiveness.to_bits(), opacity.to_bits(), 0]);
+                    // return Vec::from([pack4u8(r,g,b,a), pack4u8((emissiveness*255.0).round() as u8, (opacity*255.0).round() as u8, (reflectiveness*255.0).round() as u8, (0.0* 255.0f32).round() as u8), 0.0f32.to_bits(), 0.0f32.to_bits()]);
+                    return Vec::from([
+                        pack4u8(r,g,b,a),
+                        pack2f16(f16::from_f32(emissiveness), f16::from_f32(opacity)),
+                        pack2f16(f16::from_f32(reflectiveness), f16::from_f32(1.0-reflectiveness)),
+                        pack2f16(f16::from_f32(opacity), f16::from_f32(passthrough_chance)),
+                    ]);
                     // return Vec::from([r as u32,g as u32,b as u32,a as u32]);
                 })
                 .collect();
@@ -223,25 +250,13 @@ impl Renderer {
             gl.BindTexture(gl::TEXTURE_2D, *textures.get(&Texture::ComputeAccu).unwrap());
             gl.TexImage2D(gl::TEXTURE_2D, 0,
                           0+gl::R32UI as GLint,
-                          // 0+gl::RGBA32F as GLint,
                           width as GLsizei,height as GLsizei,
                           0,
                           0+gl::RED_INTEGER,
-                          // 0+gl::RGBA,
                           0+gl::UNSIGNED_INT, //???
-                          // 0+gl::FLOAT, //???
                           std::ptr::null());
             gl.TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_MIN_FILTER, gl::NEAREST as i32);
             gl.TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_MAG_FILTER, gl::NEAREST as i32);
-            gl.BindImageTexture(0,
-                                *textures.get(&Texture::ComputeAccu).unwrap(),
-                                0,
-                                gl::FALSE,
-                                0,
-                                gl::READ_WRITE,
-                                0+gl::R32UI
-                                // 0+gl::RGBA32F
-            );
 
 
 
@@ -273,15 +288,7 @@ impl Renderer {
                 gl.BindTextureUnit(unit as GLuint, *value.1);
                 gl.BindSampler(unit as GLuint, nearest_sampler);
                 if *value.0 == Texture::ComputeAccu {
-                    gl.BindImageTexture(unit as GLuint,
-                                             *textures.get(&Texture::ComputeAccu).unwrap(),
-                                             0,
-                                             gl::FALSE,
-                                             0,
-                                             gl::READ_WRITE,
-                                             // 0+gl::R32UI
-                                             0+gl::R32UI
-                    );
+                    gl.BindImageTexture(unit as GLuint, *value.1, 0, gl::FALSE, 0, gl::READ_WRITE, 0+gl::R32UI);
                 }
                 one_time.insert(*value.0, unit as GLint);
 
@@ -298,8 +305,8 @@ impl Renderer {
                     // if *program_name==Program::ComputeRaytracing {
                     //     continue;
                     // }
-                    println!("the before before thing is {}",gl.GetError());
-                    println!("the before thing is {}",gl.GetError());
+                    // println!("the before before thing is {}",gl.GetError());
+                    // println!("the before thing is {}",gl.GetError());
                     let loc = gl.GetUniformLocation(*program, CString::new(texture.get_id().clone().as_bytes().to_vec()).unwrap().as_ptr());
                     if (loc != -1) {
                         // println!("the {} is in {:?} at {}", key, program_name, loc);
@@ -308,7 +315,7 @@ impl Renderer {
                     }else{
                         // println!("the {} is NOT in {:?}", key, program_name);
                     }
-                    println!("the after thing is {}",gl.GetError());
+                    // println!("the after thing is {}",gl.GetError());
                 }
 
 
@@ -404,9 +411,16 @@ impl Renderer {
             self.gl.ClearColor(red, green, blue, alpha);
             self.gl.Clear(gl::COLOR_BUFFER_BIT);
 
+            self.gl.ClearTexImage(*self.textures.get(&Texture::ComputeAccu).unwrap(), 0, 0+gl::RED_INTEGER, 0+gl::UNSIGNED_INT, std::ptr::null());
             self.gl.UseProgram(*self.programs.get(&Program::ComputeRaytracing).unwrap());
-            self.gl.DispatchCompute(100,1,1);
+            self.gl.DispatchCompute(1,360,1);
             self.gl.MemoryBarrier(gl::SHADER_IMAGE_ACCESS_BARRIER_BIT);
+
+            self.gl.UseProgram(*self.programs.get(&Program::Accumulation).unwrap());
+            self.gl.BindVertexArray(self.vao);
+            self.gl.BindFramebuffer(gl::FRAMEBUFFER, self.fb0);
+            self.gl.DrawArrays(gl::TRIANGLES, 0, 3);
+
 
             self.gl.UseProgram(*self.programs.get(&Program::FragTest).unwrap());
             self.gl.BindVertexArray(self.vao);

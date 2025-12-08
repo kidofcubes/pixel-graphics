@@ -22,6 +22,7 @@ use glutin::prelude::*;
 use glutin::surface::{Surface, SwapInterval, WindowSurface};
 
 use glutin_winit::{DisplayBuilder, GlWindow};
+use half::f16;
 use crate::gl::types::{GLenum, GLint};
 use crate::renderer::Renderer;
 
@@ -278,4 +279,7 @@ pub fn gl_config_picker(configs: Box<dyn Iterator<Item = Config> + '_>) -> Confi
 
 pub fn pack4u8(r: u8, g: u8, b: u8, a: u8) -> u32 {
     return ((((((a as u32) << 8) | (b as u32)) << 8) | (g as u32)) << 8) | (r as u32);
+}
+pub fn pack2f16(x: f16, y: f16) -> u32 {
+    return ((y.to_bits() as u32) << 16) | (x.to_bits() as u32);
 }

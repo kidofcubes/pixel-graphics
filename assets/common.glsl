@@ -1,11 +1,13 @@
 #version 460
 #extension GL_EXT_gpu_shader4 : enable
 #define KEEP_FRAMES 100
+#define COMPUTE_MULTIPLIER 1000
 
 #define RESOLUTIONX 640
 #define RESOLUTIONY 360
 
-#define LIGHT_MAX_RADIUS 64.0
+//#define LIGHT_MAX_RADIUS 64.0
+#define LIGHT_MAX_RADIUS 256.0
 #define LIGHT_MIN_DIST 100000.0
 #define LIGHT_POWER_DISABLED 1.0
 float linearFalloff = (1.0/
@@ -26,13 +28,13 @@ float lightIntensity(in float dist){
 
 //mini
 float noise1(float seed1,float seed2){
-    return(
+    return fract((
     fract(seed1+12.34567*
     fract(100.*(abs(seed1*0.91)+seed2+94.68)*
     fract((abs(seed2*0.41)+45.46)*
     fract((abs(seed2)+757.21)*
     fract(seed1*0.0171))))))
-    * 1.0038 - 0.00185;
+    * 1.0038 - 0.00185);
 }
 
 //2 seeds
@@ -42,7 +44,7 @@ float noise2(float seed1,float seed2){
     buff1 = (buff1*fract(buff2*fract(buff1*fract(buff2*0.63))));
     buff2 = (buff2*fract(buff2*fract(buff1+buff2*fract(seed1*0.79))));
     buff1 = noise1(buff1, buff2);
-    return(buff1 * 1.0038 - 0.00185);
+    return fract(buff1 * 1.0038 - 0.00185);
 }
 
 //3 seeds

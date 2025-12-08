@@ -9,29 +9,21 @@ void mainImage( out vec4 fragColor, in vec2 fragCoord )
     float emissiveness = 0.0;
 
     float opacity = color.w;
-    if(color.w<0.99){
-        opacity = 0.0;
-    }else{
-        opacity = 1.0;
-        if(length(color.xyz) > 1.4){
-            emissiveness = 100.0;
-        }else{
-            color.xyz = vec3(1.0,0.0,1.0);
-        }
+    opacity = min(opacity, 0.001);
 
-    }
-    ivec2 mousePos = ivec2((iMouse.xy/iResolution.xy)*vec2(RESOLUTIONX,RESOLUTIONY));
-//    if(getKeyState(87,2)){
-//        if(length(vec2(mousePos-pos))<3.0){
-//            opacity=1.0;
-//        }
+
+    //noise code
+//    if(color.w<0.99){
+//        opacity = 0.0;
 //    }else{
-//        if(length(vec2(mousePos-pos))<1.0){
+//        opacity = 1.0;
+//        if(length(color.xyz) > 1.4){
 //            emissiveness = 100.0;
-//            opacity=1.0;
+//        }else{
+//            color.xyz = vec3(1.0,0.0,1.0);
 //        }
+//
 //    }
-    //opacity=1.0;
 
     float packedColor = PACK4U(color,vec2(0.0,1.0));
 

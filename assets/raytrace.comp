@@ -1,15 +1,152 @@
 //layout (local_size_x = 640*360, local_size_y = 1, local_size_z = 1) in;
+//layout (local_size_x = 640, local_size_y = 360, local_size_z = 1) in;
 layout (local_size_x = 640, local_size_y = 1, local_size_z = 1) in;
 //layout (local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
-//uniform usampler2D scene;
+uniform usampler2D scene;
 uniform int frame;
 //uniform sampler1D ;
 //uniform uimage2D sumR; // integer accumulator R
 //uniform uimage2D sumG; // integer accumulator G
 //uniform uimage2D sumB; // integer accumulator B
 
-layout (r32ui, binding = 0) uniform uimage2D computeAccu; // integer hit count
+//layout (r32ui, binding = 0) uniform uimage2D computeAccu; // integer hit count
+layout (r32ui) uniform uimage2D computeAccu; // integer hit count
 //layout (rgba32f, binding = 0) uniform image2D computeAccu; // integer hit count
+
+
+#define FLT_MAX 3.402823466e+38
+#define FLT_MIN 1.175494351e-38
+
+//i generate the random dir
+void pathTracing(in ivec2 pos/*, float light*/, in float seed){
+
+    // local curX, curY = ray.startX, ray.startY
+    //    float initSeed = noise2(float(1.0),seed);
+    float initSeed = noise2(float(frame),seed);
+    vec2 initPos = vec2(pos);
+    initPos.x += noise3(initSeed,initPos.x,initPos.y);
+    initPos.y += noise3(initSeed,initPos.x,initPos.y);
+
+    float randomDir = noise3(initSeed,initPos.x,initPos.y)*2.0*PI;
+    vec2 dir = vec2(cos(randomDir),sin(randomDir));
+
+    // -1 to compensate for 1-indexed tile coordinates
+    int tileOffsetX = (dir.x > 0.0 ? 1 : 0);
+    int tileOffsetY = (dir.y > 0.0 ? 1 : 0);
+
+    int stepX = dir.x > 0.0 ? 1 : -1;
+    int stepY = dir.y > 0.0 ? 1 : -1;
+
+    vec2 curPos = initPos;
+    // local tileX, tileY = tileCoords(grid.cellSize, curX, curY)
+    float t = 0.0;
+    //float tDeltaX = float(stepX)/dir.x;
+    //float tDeltaY = float(stepY)/dir.y;
+
+    if(dir.x==0.0){
+        dir.x = FLT_MIN;
+    }
+    if(dir.y==0.0){
+        dir.y = FLT_MIN;
+    }
+
+    //int taxicabDistance = abs(dest.x-pos.x)+abs(dest.y-pos.y);
+    ivec2 movingPos = ivec2(int(pos.x),int(pos.y));
+    //if(getPixel(movingPos).z > 0.5){
+    //    return vec2(getPixel(movingPos).y,0.0);
+    //}
+    float dist = length(curPos-initPos);
+    uvec4 currentPixel = texelFetch(scene, movingPos, 0);
+    float currentLight = (unpackHalf2x16(currentPixel.y).x) * 10.0;
+
+    for(int i=0;i<(int(LIGHT_MAX_RADIUS*2.0));i++) {
+        if(currentLight < 0.01){
+            return;
+        }
+        // while tileX > 0 and tileX <= grid.width and tileY > 0 and tileY <= grid.height do
+        // grid[tileY][tileX] = true
+        // mark(curX, curY)
+        float dtX = (float(movingPos.x+tileOffsetX) - curPos.x) / dir.x; // distances to next borders
+        float dtY = (float(movingPos.y+tileOffsetY) - curPos.y) / dir.y; // distances to next borders
+
+
+        if(dtX < dtY){
+            t = t + dtX;
+            movingPos.x+=stepX;
+        }else{
+            t = t + dtY;
+            movingPos.y+=stepY;
+        }
+
+//        if(movingPos.x < 0 || movingPos.x >= RESOLUTIONX || movingPos.y < 0|| movingPos.y >= RESOLUTIONY || dist > LIGHT_MAX_RADIUS){
+        if(movingPos.x < 0 || movingPos.x >= RESOLUTIONX || movingPos.y < 0|| movingPos.y >= RESOLUTIONY){
+            return;
+        }
+
+//        dist = length(curPos-initPos);
+//        curPos = vec2(initPos.x + (dir.x*t),initPos.y + (dir.y*t));
+        curPos += dir*min(dtX, dtY);
+        currentPixel = texelFetch(scene, movingPos, 0);
+        vec2 material0 = unpackHalf2x16(currentPixel.y);
+        vec2 material1 = unpackHalf2x16(currentPixel.z);
+        vec2 material2 = unpackHalf2x16(currentPixel.w);
+        imageAtomicAdd(computeAccu,movingPos, uint(currentLight * float(COMPUTE_MULTIPLIER)));
+
+        //3 possible options
+        //reflect off the pixel
+        //new light power determined by reflectiveness
+
+        //scatter off the pixel
+        //new light power determined by reflectiveness still or smth?
+
+        //go through the pixel
+        //new light power determined by opacity
+        float opacity = material0.y;
+        float reflect_prob = material1.x;
+        float diffuse_prob = material1.y;
+
+        if(noise2(curPos.x,frame,curPos.y) < material2.y) { //PASSTHROUGH
+            currentLight = currentLight * (1.0-opacity);
+        } else {
+            if(noise2(float(frame),curPos.x,curPos.y) < reflect_prob){ //REFLECT
+                currentLight = currentLight * (reflect_prob);
+                if(dtX < dtY){
+                    //                dir = vec2(dir.x*-1.0,dir.y);
+                    dir.x *= -1.0;
+                    stepX = -stepX;
+                }else{
+                    //                dir = vec2(dir.x,dir.y*-1.0);
+                    dir.y *= -1.0;
+                    stepY = -stepY;
+                }
+                tileOffsetX = (dir.x > 0.0 ? 1 : 0);
+                tileOffsetY = (dir.y > 0.0 ? 1 : 0);
+
+            } else if(noise3(frame,curPos.x,curPos.y) < diffuse_prob){ //DIFFUSE
+//            } else if(false){ //DIFFUSE
+//                currentLight = currentLight * (1.0-reflect_prob);
+
+//                randomDir = noise3(curPos.x,frame,curPos.y)*2.0*PI;
+                randomDir += (noise3(curPos.x,frame,curPos.y)-0.5)*0.1*PI;
+                dir = vec2(cos(randomDir),sin(randomDir));
+                //figure out the weighted chance and stuff
+
+                // -1 to compensate for 1-indexed tile coordinates
+                tileOffsetX = (dir.x > 0.0 ? 1 : 0);
+                tileOffsetY = (dir.y > 0.0 ? 1 : 0);
+
+                stepX = dir.x > 0.0 ? 1 : -1;
+                stepY = dir.y > 0.0 ? 1 : -1;
+
+            }else{
+
+            }
+        }
+    }
+//    return vec2(uintBitsToFloat(texelFetch(scene, pos, 0).y),LIGHT_MAX_RADIUS+1.0);
+}
+
+
 
 void main(){
 //    ivec2 pos = ivec2(gl_GlobalInvocationID.xy);
@@ -22,14 +159,20 @@ void main(){
 
 
     uint idx = gl_GlobalInvocationID.x;
-//
+
     float randomDir = noise2(float(idx),float(frame))*2.0*PI;
-////    vec2 dir = vec2(cos(randomDir),sin(randomDir));
-//
+//    vec2 dir = vec2(cos(randomDir),sin(randomDir));
+
     ivec2 pos = ivec2(
         floor(noise1(randomDir,float(frame))*float(RESOLUTIONX)),
         floor(noise2(randomDir,float(frame))*float(RESOLUTIONY))
     );
+    pos = ivec2(gl_GlobalInvocationID.xy);
+
+    pathTracing(pos,0);
+//    imageAtomicAdd(computeAccu,pos,uint(0.01 * float(COMPUTE_MULTIPLIER)))        ;
+
+
 //    pos = ivec2(0,0);
-    imageAtomicAdd(computeAccu,pos,1u);
+//    imageAtomicAdd(computeAccu,pos,1u * COMPUTE_MULTIPLIER);
 }
