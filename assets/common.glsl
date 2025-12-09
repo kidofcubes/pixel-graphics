@@ -15,6 +15,25 @@ float linearFalloff = (1.0/
 (LIGHT_MIN_DIST+(LIGHT_MAX_RADIUS*LIGHT_MAX_RADIUS))
 )
 );
+
+struct PixelData {
+// Block 1 (16 bytes)
+    vec4 color;// r, g, b, opacity
+
+// Block 2 (16 bytes)
+    float emissiveness;
+    float reflectiveness;
+    float metallic;
+    float roughness;
+
+// Block 3 (16 bytes)
+    float transmission;
+    float padding_0;
+    float padding_1;
+    float padding_2;
+};
+
+
 float lightIntensity(in float dist){
     return
     (
@@ -379,6 +398,85 @@ vec3 UNPACKVEC3(float x, vec2 range)
 
     return N*logfloat(unpack.y, range, 16);
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
