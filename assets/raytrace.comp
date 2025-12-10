@@ -38,11 +38,11 @@ vec2 rotate2d(vec2 v, float a) {
 }
 
 // GLSL side UBO definition
-layout(std140, binding = 4) uniform LightSources { // Choose an available binding index
-    vec4 light_points[MAX_LIGHTS]; // MAX_LIGHTS must match the array size reserved on GPU
+layout(std140) uniform lightList { // Choose an available binding index
+    LightPoint light_points[MAX_LIGHTS]; // MAX_LIGHTS must match the array size reserved on GPU
 };
 
-uniform uint lightCount; // Standard uniform to tell the shader how many lights are active
+uniform int lightCount; // Standard uniform to tell the shader how many lights are active
 
 
 //i generate the random dir
@@ -109,9 +109,25 @@ void pathTracing(in ivec2 pos/*, float light*/, in float seed){
         // If the cell is effectively empty, the ray travels through the volume
         float opacity = currentPixel.color.a;
         if(opacity < 0.01) {
-            // Apply simple volumetric attenuation (Interaction with "Air")
-            // This simulates light lost to scattering/absorption over the distance traveled (dt).
-            float attenuationFactor = exp(-(0.01) * dt);
+            // --- VOLUMETRIC SCATTERING (In-Scattering) ---
+
+            // 1. Calculate scattered light (light made visible)
+            // Energy scattered = Current Light * Density * Distance Traveled
+            float scatteringRate = 0.5 * dt;
+
+            // Apply a tint to the volume/air itself for effect (e.g., blueish/fog)
+            vec3 volumeColor = vec3(0.8, 0.9, 1.0) * 0.2;
+            vec3 scatteredLight = currentLight * scatteringRate * volumeColor;
+
+            // 2. Deposit the scattered light into the accumulator
+            // This is the core step that makes the ray visible in the grid cell.
+            imageAtomicAdd(computeAccuR,movingPos,uint(scatteredLight.r * float(COMPUTE_MULTIPLIER)));
+            imageAtomicAdd(computeAccuG,movingPos,uint(scatteredLight.g * float(COMPUTE_MULTIPLIER)));
+            imageAtomicAdd(computeAccuB,movingPos,uint(scatteredLight.b * float(COMPUTE_MULTIPLIER)));
+
+            // 3. Apply Attenuation (Light loss from the ray)
+            // The light remaining in the ray path must be reduced.
+            float attenuationFactor = exp(-(0.05) * dt);
             currentLight *= attenuationFactor;
             continue;
         }
@@ -164,7 +180,7 @@ void pathTracing(in ivec2 pos/*, float light*/, in float seed){
         } else if (roll < reflChance + transChance) {
             // --- TRANSMISSION ---
             // Pass through with some attenuation based on color
-            currentLight *= currentPixel.color.rgb;
+//            currentLight *= currentPixel.color.rgb;
 
             // Keep 'dir' same for simple transmission.
 
@@ -188,17 +204,20 @@ void main(){
 
 
 
-    uint idx = gl_GlobalInvocationID.x;
+//    uint i = (gl_GlobalInvocationID.x + (gl_GlobalInvocationID.y * RESOLUTIONX))%lightCount;
+    uint i = (gl_GlobalInvocationID.x + (gl_GlobalInvocationID.y * RESOLUTIONX))%lightCount;
+    ivec2 pos = ivec2(light_points[i].x, light_points[i].y);
+//    pos = ivec2(i);
+//    pos = ivec2()
+//    pos = ivec2(gl_GlobalInvocationID.xy);
+//    imageAtomicAdd(computeAccuR,pos,uint(100.0 * float(COMPUTE_MULTIPLIER)));
+//    imageAtomicAdd(computeAccuG,pos,uint(100.0 * float(COMPUTE_MULTIPLIER)));
+//    imageAtomicAdd(computeAccuB,pos,uint(100.0 * float(COMPUTE_MULTIPLIER)));
 
-    float randomDir = noise2(float(idx),float(frame))*2.0*PI;
-//    vec2 dir = vec2(cos(randomDir),sin(randomDir));
 
-    ivec2 pos = ivec2(
-        floor(noise1(randomDir,float(frame))*float(RESOLUTIONX)),
-        floor(noise2(randomDir,float(frame))*float(RESOLUTIONY))
-    );
-    pos = ivec2(gl_GlobalInvocationID.xy);
-
+//    imageAtomicAdd(computeAccuR,ivec2(gl_GlobalInvocationID.xy),uint(0.1 * float(COMPUTE_MULTIPLIER)));
+//    imageAtomicAdd(computeAccuG,ivec2(gl_GlobalInvocationID.xy),uint(0.1 * float(COMPUTE_MULTIPLIER)));
+//    imageAtomicAdd(computeAccuB,ivec2(gl_GlobalInvocationID.xy),uint(0.1 * float(COMPUTE_MULTIPLIER)));
     pathTracing(pos,0);
 //    imageAtomicAdd(computeAccu,pos,uint(0.01 * float(COMPUTE_MULTIPLIER)))        ;
 

@@ -69,8 +69,8 @@ pub struct LightPoint {
     // For simplicity, we'll use 4-byte aligned components.
 
     // Position (2D coordinates)
-    pub x: u32,
-    pub y: u32,
+    pub x: f32,
+    pub y: f32,
 
     // Intensity/Emissivity
     pub emissiveness: f32,
@@ -345,11 +345,12 @@ impl Renderer {
 
 
                 let mut uniforms = HashMap::new();
-                for uniform in [Uniform::Frame] {
+                for uniform in [Uniform::Frame, Uniform::LightCount] {
                     // gl.GetUniforms
                     // set this up to string and all uniforms later maybe idk
                     let loc = gl.GetUniformLocation(*program, CString::new(uniform.get_id().clone().as_bytes().to_vec()).unwrap().as_ptr());
                     if(loc != -1) {
+                        println!("found a {:?} in program {:?} at location {}", uniform.get_id(), program_name, loc);
                         uniforms.insert(uniform, loc as GLint);
                     }
                 }
@@ -374,14 +375,14 @@ impl Renderer {
     }
 
 
-    pub unsafe fn update_uniforms(&self, lightCount: u32){
+    pub unsafe fn update_uniforms(&self, light_count: u32){
         for (program_name, program) in self.programs.iter() {
             self.gl.UseProgram(*program);
             if let Some(loc) = self.uniform_locations.get(program_name).unwrap().get(&Uniform::Frame) {
                 self.gl.Uniform1i(*loc, self.frame);
             }
             if let Some(loc) = self.uniform_locations.get(program_name).unwrap().get(&Uniform::LightCount) {
-                self.gl.Uniform1ui(*loc, lightCount);
+                self.gl.Uniform1i(*loc, light_count as i32);
             }
         }
     }
@@ -405,10 +406,12 @@ impl Renderer {
 
             let ubo_binding = self.bindings.get(&Bindings::LightList.get_id()).unwrap().to_owned().1;
             self.gl.BindBuffer(gl::UNIFORM_BUFFER, ubo_binding);
-            self.gl.BufferSubData(gl::UNIFORM_BUFFER, 0, (light_data.len() * mem::size_of::<LightPoint>()) as GLsizeiptr, light_data.as_ptr() as *const c_void);
+            // self.gl.BufferSubData(gl::UNIFORM_BUFFER, 0, (light_data.len() * mem::size_of::<LightPoint>()) as GLsizeiptr, light_data.as_ptr() as *const c_void);
+            self.gl.BufferData(gl::UNIFORM_BUFFER, (light_data.len() * mem::size_of::<LightPoint>()) as GLsizeiptr, light_data.as_ptr() as *const c_void, gl::DYNAMIC_DRAW);
             self.gl.BindBuffer(gl::UNIFORM_BUFFER, 0);
 
             self.update_uniforms(light_data.len() as u32);
+            // println!("lightdata len is {:?}",light_data.len());
 
 
             // Copy the new Rust data directly into the mapped GPU memory pointer

@@ -36,6 +36,13 @@ struct PixelData {
     float padding_2;
 };
 
+struct LightPoint {
+    float x;
+    float y;
+    float emissiveness;
+    float padding;
+};
+
 
 float lightIntensity(in float dist){
     return

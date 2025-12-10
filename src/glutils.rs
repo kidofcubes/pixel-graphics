@@ -28,17 +28,17 @@ pub fn generate_light_data(width: u32, pixel_data: &Vec<PixelData>) -> Vec<Light
     let mut y:u32 = 0;
     let mut light_points = Vec::new();
     for pixel in pixel_data {
-        if(pixel.emissiveness>=0.0){
+        if(pixel.emissiveness>0.0){
             light_points.push(LightPoint {
-                x: x,
-                y: y,
+                x: x as f32,
+                y: y as f32,
                 emissiveness: pixel.emissiveness,
                 padding: 0.0,
             });
         }
         x+=1;
         if(x==width){
-            x = 0;
+            x=0;
             y+=1;
         }
     }
@@ -77,6 +77,7 @@ pub fn generate_single_pixel(r: u8,g: u8,b: u8,a: u8) -> PixelData{
     };
     if(r==255 && g==255 && b==255){
         pixel_data.emissiveness = 10.0;
+        pixel_data.opacity = 0.0;
         pixel_data.r = 1.0;
         pixel_data.g = 1.0;
         pixel_data.b = 1.0;
@@ -84,11 +85,15 @@ pub fn generate_single_pixel(r: u8,g: u8,b: u8,a: u8) -> PixelData{
     }
     if(a==0){
         pixel_data.opacity = 0.001;
-        // pixel_data.transmission = 1.0;
+        pixel_data.transmission = 1.0;
         pixel_data.reflectiveness = 0.0;
+        pixel_data.r = 1.0;
+        pixel_data.g = 1.0;
+        pixel_data.b = 1.0;
     }else{
         // pixel_data.transmission = 0.1;
-        pixel_data.reflectiveness= 0.9;
+        // pixel_data.reflectiveness= 0.99;
+        pixel_data.transmission = 0.5;
 
     }
     return pixel_data;

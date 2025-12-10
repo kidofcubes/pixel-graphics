@@ -52,6 +52,7 @@ void main() {
     // C. Get the original scene pixel data and add emission
     PixelData scenePixel = get_pixel(pos);
     vec3 emission = scenePixel.color.rgb * scenePixel.emissiveness * 10.0;
+    emission = vec3(0.0);
 
     // D. Calculate the final color for *this frame only*
     vec3 currentFrameColor = scenePixel.color.rgb * (currentFrameIllumination + emission);
