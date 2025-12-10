@@ -19,7 +19,6 @@ layout (r32ui, binding = 2) uniform uimage2D computeAccuB;
 #define FLT_MIN 1.175494351e-38
 
 
-
 layout (std430) buffer scene
 {
 // We group the 12 floats into an array of vec4s for clearer alignment.
@@ -37,6 +36,13 @@ vec2 rotate2d(vec2 v, float a) {
     float c = cos(a);
     return vec2(v.x * c - v.y * s, v.x * s + v.y * c);
 }
+
+// GLSL side UBO definition
+layout(std140, binding = 4) uniform LightSources { // Choose an available binding index
+    vec4 light_points[MAX_LIGHTS]; // MAX_LIGHTS must match the array size reserved on GPU
+};
+
+uniform uint lightCount; // Standard uniform to tell the shader how many lights are active
 
 
 //i generate the random dir

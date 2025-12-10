@@ -16,6 +16,9 @@ float linearFalloff = (1.0/
 )
 );
 
+#define MAX_LIGHTS 1024
+
+
 struct PixelData {
 // Block 1 (16 bytes)
     vec4 color;// r, g, b, opacity

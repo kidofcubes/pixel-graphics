@@ -12,7 +12,7 @@ use crate::{gl, glutils, pack2f16, pack4u8};
 use crate::gl::types::{GLint, GLsizei, GLsizeiptr, GLuint};
 use image::{ImageReader, RgbaImage};
 use std::mem;
-use crate::glutils::{create_texture, generate_pixel_data, load_image};
+use crate::glutils::{create_texture, generate_light_data, generate_pixel_data, load_image};
 
 #[derive(Debug, Eq, PartialEq, Hash, Copy, Clone)]
 enum Bindings {
@@ -39,12 +39,14 @@ impl Bindings {
 
 #[derive(Debug, Eq, PartialEq, Hash, Copy, Clone)]
 enum Uniform {
-    Frame
+    Frame,
+    LightCount
 }
 impl Uniform {
     fn get_id(&self) -> &str {
         match self{
             Uniform::Frame => "frame",
+            Uniform::LightCount => "lightCount",
         }
     }
 }
@@ -67,11 +69,11 @@ pub struct LightPoint {
     // For simplicity, we'll use 4-byte aligned components.
 
     // Position (2D coordinates)
-    pub x: i32,
-    pub y: i32,
+    pub x: u32,
+    pub y: u32,
 
     // Intensity/Emissivity
-    pub intensity: f32,
+    pub emissiveness: f32,
 
     // Padding to ensure Vec4 alignment (16 bytes total)
     pub padding: f32,
@@ -372,11 +374,14 @@ impl Renderer {
     }
 
 
-    pub unsafe fn update_uniforms(&self){
+    pub unsafe fn update_uniforms(&self, lightCount: u32){
         for (program_name, program) in self.programs.iter() {
             self.gl.UseProgram(*program);
             if let Some(loc) = self.uniform_locations.get(program_name).unwrap().get(&Uniform::Frame) {
                 self.gl.Uniform1i(*loc, self.frame);
+            }
+            if let Some(loc) = self.uniform_locations.get(program_name).unwrap().get(&Uniform::LightCount) {
+                self.gl.Uniform1ui(*loc, lightCount);
             }
         }
     }
@@ -394,13 +399,21 @@ impl Renderer {
         alpha: GLfloat,
     ) {
         unsafe {
-            self.update_uniforms();
-
             let total_size = self.scene.width() as usize * self.scene.height() as usize * mem::size_of::<PixelData>();
+            let pixel_data = generate_pixel_data(&self.scene);
+            let light_data = generate_light_data(self.scene.width(),&pixel_data);
+
+            let ubo_binding = self.bindings.get(&Bindings::LightList.get_id()).unwrap().to_owned().1;
+            self.gl.BindBuffer(gl::UNIFORM_BUFFER, ubo_binding);
+            self.gl.BufferSubData(gl::UNIFORM_BUFFER, 0, (light_data.len() * mem::size_of::<LightPoint>()) as GLsizeiptr, light_data.as_ptr() as *const c_void);
+            self.gl.BindBuffer(gl::UNIFORM_BUFFER, 0);
+
+            self.update_uniforms(light_data.len() as u32);
+
 
             // Copy the new Rust data directly into the mapped GPU memory pointer
             std::ptr::copy_nonoverlapping(
-                generate_pixel_data(&self.scene).as_ptr() as *const c_void,
+                pixel_data.as_ptr() as *const c_void,
                 self.scene_mapped_ptr,
                 total_size,
             );

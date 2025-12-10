@@ -5,7 +5,7 @@ use std::path::Path;
 use image::{ImageReader, RgbaImage};
 use crate::gl;
 use crate::gl::types::{GLchar, GLenum, GLint, GLsizei, GLuint};
-use crate::renderer::PixelData;
+use crate::renderer::{LightPoint, PixelData};
 
 pub fn load_image(path: &Path) -> RgbaImage {
     // let img = ImageReader::open("assets/rgbanoise320x180.png").unwrap().decode().unwrap();
@@ -22,6 +22,27 @@ pub fn load_image(path: &Path) -> RgbaImage {
     let mut count2 = 0;
 
     rgba
+}
+pub fn generate_light_data(width: u32, pixel_data: &Vec<PixelData>) -> Vec<LightPoint> {
+    let mut x:u32 = 0;
+    let mut y:u32 = 0;
+    let mut light_points = Vec::new();
+    for pixel in pixel_data {
+        if(pixel.emissiveness>=0.0){
+            light_points.push(LightPoint {
+                x: x,
+                y: y,
+                emissiveness: pixel.emissiveness,
+                padding: 0.0,
+            });
+        }
+        x+=1;
+        if(x==width){
+            x = 0;
+            y+=1;
+        }
+    }
+    return light_points;
 }
 
 pub fn generate_pixel_data(rgba: &RgbaImage) -> Vec<PixelData> {
