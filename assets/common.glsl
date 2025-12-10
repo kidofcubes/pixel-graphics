@@ -22,9 +22,9 @@ struct PixelData {
 
 // Block 2 (16 bytes)
     float emissiveness;
-    float reflectiveness;
-    float metallic;
-    float roughness;
+    float reflectiveness; // 0.0 - 1.0
+    float metallic; // 0.0 - 1.0
+    float roughness; // 0.0 - 1.0
 
 // Block 3 (16 bytes)
     float transmission;
@@ -55,7 +55,6 @@ float noise1(float seed1,float seed2){
     fract(seed1*0.0171))))))
     * 1.0038 - 0.00185);
 }
-
 //2 seeds
 float noise2(float seed1,float seed2){
     float buff1 = abs(seed1+100.94) + 1000.;
@@ -65,6 +64,11 @@ float noise2(float seed1,float seed2){
     buff1 = noise1(buff1, buff2);
     return fract(buff1 * 1.0038 - 0.00185);
 }
+
+float noise2vec(vec2 seed) {
+    return noise2(seed.x,seed.y);
+}
+
 
 //3 seeds
 float noise2(float seed1,float seed2,float seed3){

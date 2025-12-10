@@ -277,8 +277,6 @@ impl Renderer {
                 let mut types = HashMap::new();
                 match value.1.0 {
                     Bindings::Fb0Tex | Bindings::ComputeAccuR | Bindings::ComputeAccuG | Bindings::ComputeAccuB => {
-                        // if value.1.0 == Bindings::ComputeAccuR || value.1.0 == Bindings::ComputeAccuG || value.1.0 == Bindings::ComputeAccuB {
-                        // }
                         gl.BindImageTexture(texture_unit, value.1.1, 0, gl::FALSE, 0, gl::READ_WRITE, 0+gl::R32UI);
                         gl.BindTextureUnit(texture_unit, value.1.1);
                         gl.BindSampler(texture_unit, nearest_sampler);
@@ -287,15 +285,6 @@ impl Renderer {
                     },
                     _ => {}
                 }
-                // match value.1.0 {
-                //     Bindings::ComputeAccu => {
-                //         gl.BindImageTexture(image_unit, value.1.1, 0, gl::FALSE, 0, gl::READ_WRITE, 0+gl::R32UI);
-                //         types.insert(gl::IMAGE_2D, image_unit);
-                //         image_unit+=1;
-                //
-                //     },
-                //     _ => {}
-                // }
                 match value.1.0 {
                     Bindings::LightList => {
                         gl.BindBufferBase(gl::UNIFORM_BUFFER, buffer_base_unit, value.1.1);
@@ -353,19 +342,6 @@ impl Renderer {
                 }
 
 
-                // for (id, value) in bindings.iter() {
-                //     let loc = gl.GetUniformLocation(*program, CString::new(id.as_bytes().to_vec()).unwrap().as_ptr());
-                //     if (loc != -1) {
-                //         // println!("the {} is in {:?} at {}", key, program_name, loc);
-                //         println!("found a {:?} in program {:?} at location {}", id, program_name, loc);
-                //         gl.Uniform1i(loc, *one_time.get(id).unwrap());
-                //     }else{
-                //         println!("the {} is NOT in {:?}", id, program_name);
-                //     }
-                //     // gl.GetProgramResourceIndex()
-                // }
-
-
                 let mut uniforms = HashMap::new();
                 for uniform in [Uniform::Frame] {
                     // gl.GetUniforms
@@ -380,40 +356,6 @@ impl Renderer {
 
             println!("the original3 is {}",gl.GetError());
 
-            // let mut vbo = std::mem::zeroed();
-            // gl.GenBuffers(1, &mut vbo);
-            // gl.BindBuffer(gl::ARRAY_BUFFER, vbo);
-            // gl.BufferData(
-            //     gl::ARRAY_BUFFER,
-            //     (VERTEX_DATA.len() * std::mem::size_of::<f32>()) as gl::types::GLsizeiptr,
-            //     VERTEX_DATA.as_ptr() as *const _,
-            //     gl::STATIC_DRAW,
-            // );
-
-            // let pos_attrib = gl.GetAttribLocation(program, b"position\0".as_ptr() as *const _);
-            // let color_attrib = gl.GetAttribLocation(program, b"color\0".as_ptr() as *const _);
-            // gl.VertexAttribPointer(
-            //     pos_attrib as gl::types::GLuint,
-            //     2,
-            //     gl::FLOAT,
-            //     0,
-            //     5 * std::mem::size_of::<f32>() as gl::types::GLsizei,
-            //     std::ptr::null(),
-            // );
-            // gl.VertexAttribPointer(
-            //     color_attrib as gl::types::GLuint,
-            //     3,
-            //     gl::FLOAT,
-            //     0,
-            //     5 * std::mem::size_of::<f32>() as gl::types::GLsizei,
-            //     (2 * std::mem::size_of::<f32>()) as *const () as *const _,
-            // );
-            // gl.EnableVertexAttribArray(pos_attrib as gl::types::GLuint);
-            // gl.EnableVertexAttribArray(color_attrib as gl::types::GLuint);
-
-            // Self { program, vao, vbo, gl }
-            // Self { program, vao, gl }
-            // Self { pass1, pass2, pass3, vao, fb0, fb0tex, scene_tex, gl, frame: 0 }
             Self {
                 programs,
                 uniform_locations,
@@ -488,27 +430,6 @@ impl Renderer {
             self.gl.BindVertexArray(self.vao);
             self.gl.BindFramebuffer(gl::FRAMEBUFFER, 0);
             self.gl.DrawArrays(gl::TRIANGLES, 0, 3);
-
-            // // raytrace
-            // self.gl.UseProgram(*self.programs.get(&Program::Raytracing).unwrap());
-            // self.gl.BindVertexArray(self.vao);
-            // // self.gl.BindBuffer(gl::ARRAY_BUFFER, self.vbo);
-            // // self.gl.BindFramebuffer(gl::FRAMEBUFFER, self.fb0);
-            // self.gl.BindFramebuffer(gl::FRAMEBUFFER, self.fb0);
-            // self.gl.DrawArrays(gl::TRIANGLES, 0, 3);
-            // // raytrace END
-            //
-            //
-            // // display final
-            // self.gl.UseProgram(*self.programs.get(&Program::StretchedDisplay).unwrap());
-            // self.gl.BindVertexArray(self.vao);
-            // self.gl.BindFramebuffer(gl::FRAMEBUFFER, 0);
-            // self.gl.DrawArrays(gl::TRIANGLES, 0, 3);
-            // // display final END
-
-
-            // println!("the thing3 is {}",self.gl.GetError());
-            // self.gl.DrawArrays(gl::POINTS, 0, 1);
         }
     }
 

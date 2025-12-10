@@ -31,28 +31,17 @@ PixelData get_pixel(ivec2 pos){
     return scene_pixels[pos.x+(pos.y*RESOLUTIONX)];
 }
 
-// Function to calculate a cosine-weighted random direction for diffuse
-vec2 random_diffuse_direction(vec2 normal, float random_seed) {
-    float randomDir = noise3(random_seed, normal.x, normal.y) * 2.0 * PI;
-    // Perturb the direction slightly with noise
-    float perturbation = (noise2(random_seed, normal.y, normal.x) - 0.5) * 0.1 * PI;
-    randomDir += perturbation;
-    return vec2(cos(randomDir), sin(randomDir));
+// --- Helper: 2D Rotation ---
+vec2 rotate2d(vec2 v, float a) {
+    float s = sin(a);
+    float c = cos(a);
+    return vec2(v.x * c - v.y * s, v.x * s + v.y * c);
 }
 
-
-// Function to calculate a microfacet reflection direction
-vec2 microfacet_reflection(vec2 incident_dir, vec2 normal, float roughness, float random_seed) {
-    // Returning the perfect reflection is a simplification for grid-based ray marching.
-    // Roughness is primarily handled by the attenuation and diffuse/specular split.
-    return incident_dir;
-}
 
 //i generate the random dir
 void pathTracing(in ivec2 pos/*, float light*/, in float seed){
 
-    // local curX, curY = ray.startX, ray.startY
-    //    float initSeed = noise2(float(1.0),seed);
     float initSeed = noise2(float(frame),seed);
     vec2 initPos = vec2(pos);
     initPos.x += noise3(initSeed,initPos.x,initPos.y);
@@ -69,10 +58,7 @@ void pathTracing(in ivec2 pos/*, float light*/, in float seed){
     int stepY = dir.y > 0.0 ? 1 : -1;
 
     vec2 curPos = initPos;
-    // local tileX, tileY = tileCoords(grid.cellSize, curX, curY)
     float t = 0.0;
-    //float tDeltaX = float(stepX)/dir.x;
-    //float tDeltaY = float(stepY)/dir.y;
 
     if(dir.x==0.0){
         dir.x = FLT_MIN;
@@ -81,30 +67,23 @@ void pathTracing(in ivec2 pos/*, float light*/, in float seed){
         dir.y = FLT_MIN;
     }
 
-    //int taxicabDistance = abs(dest.x-pos.x)+abs(dest.y-pos.y);
     ivec2 movingPos = ivec2(int(pos.x),int(pos.y));
-    //if(getPixel(movingPos).z > 0.5){
-    //    return vec2(getPixel(movingPos).y,0.0);
-    //}
     float dist = length(curPos-initPos);
-    //    uvec4 currentPixel = texelFetch(scene, movingPos, 0);
     PixelData currentPixel = get_pixel(movingPos);
 
-    // FIX: Change currentLight to vec3 for color and initialize with emitted color
     vec3 currentLight = currentPixel.color.rgb * currentPixel.emissiveness * 10.0;
 
+    float rngState = seed + initSeed;
+
+    int side = 0;
+
     for(int i=0;i<(int(LIGHT_MAX_RADIUS*2.0));i++) {
-        // FIX: Path termination check uses max component of vec3
         if(max(currentLight.r, max(currentLight.g, currentLight.b)) < 0.01){
             return;
         }
-        // while tileX > 0 and tileX <= grid.width and tileY > 0 and tileY <= grid.height do
-        // grid[tileY][tileX] = true
-        // mark(curX, curY)
         float dtX = (float(movingPos.x+tileOffsetX) - curPos.x) / dir.x; // distances to next borders
         float dtY = (float(movingPos.y+tileOffsetY) - curPos.y) / dir.y; // distances to next borders
-
-
+        float dt = min(dtX, dtY);
         if(dtX < dtY){
             t = t + dtX;
             movingPos.x+=stepX;
@@ -113,94 +92,81 @@ void pathTracing(in ivec2 pos/*, float light*/, in float seed){
             movingPos.y+=stepY;
         }
 
-        //        if(movingPos.x < 0 || movingPos.x >= RESOLUTIONX || movingPos.y < 0|| movingPos.y >= RESOLUTIONY || dist > LIGHT_MAX_RADIUS){
         if(movingPos.x < 0 || movingPos.x >= RESOLUTIONX || movingPos.y < 0|| movingPos.y >= RESOLUTIONY){
             return;
         }
 
-        //        dist = length(curPos-initPos);
-        //        curPos = vec2(initPos.x + (dir.x*t),initPos.y + (dir.y*t));
         curPos += dir*min(dtX, dtY);
-        //        currentPixel = texelFetch(scene, movingPos, 0);
         currentPixel = get_pixel(movingPos);
 
-        // 3. Accumulate Light (Store the light carried by the path)
-        imageAtomicAdd(computeAccuR, movingPos, uint(currentLight.r * COMPUTE_MULTIPLIER));
-        imageAtomicAdd(computeAccuG, movingPos, uint(currentLight.g * COMPUTE_MULTIPLIER));
-        imageAtomicAdd(computeAccuB, movingPos, uint(currentLight.b * COMPUTE_MULTIPLIER));
-
-        // 4. PBR Material Interaction
-
-        // Local variable setup for clarity:
-        vec3 albedo = currentPixel.color.rgb;
+        // A. Basic Density/Opacity Check
+        // If the cell is effectively empty, the ray travels through the volume
         float opacity = currentPixel.color.a;
-        float emissiveness = currentPixel.emissiveness;
-        float reflectiveness = currentPixel.reflectiveness;
-        float metallic = currentPixel.metallic;
-
-        // A variable for random Monte Carlo sampling
-        float random_pbr_seed = noise3(frame, curPos.x * 0.1, curPos.y * 0.1);
-
-        // --- Emission ---
-        if (emissiveness > 0.0) {
-            vec3 emission_color = currentLight * albedo * emissiveness;
-
-            // Add light to the initial ray's pixel and increment the sample count (A channel)
-
-            imageAtomicAdd(computeAccuR, ivec2(gl_GlobalInvocationID.xy), uint(emission_color.r * COMPUTE_MULTIPLIER));
-            imageAtomicAdd(computeAccuG, ivec2(gl_GlobalInvocationID.xy), uint(emission_color.g * COMPUTE_MULTIPLIER));
-            imageAtomicAdd(computeAccuB, ivec2(gl_GlobalInvocationID.xy), uint(emission_color.b * COMPUTE_MULTIPLIER));
-            return; // Terminate path
+        if(opacity < 0.01) {
+            // Apply simple volumetric attenuation (Interaction with "Air")
+            // This simulates light lost to scattering/absorption over the distance traveled (dt).
+            float attenuationFactor = exp(-(0.01) * dt);
+            currentLight *= attenuationFactor;
+            continue;
         }
 
-        // --- Transmission / Opacity (Monte Carlo Absorption) ---
-        if (opacity < 1.0 && random_pbr_seed < (1.0 - opacity)) {
-            currentLight *= albedo * (1.0 - opacity); // Attenuation
-            continue; // Continue loop without changing ray direction
-        }
-
-        // --- Diffuse/Specular Split ---
-
-        // Fresnel approximation (F0)
-        vec3 F0 = mix(vec3(reflectiveness), albedo, metallic);
-        float reflection_chance = (metallic == 1.0) ? 1.0 : max(max(F0.r, F0.g), F0.b);
-
-        // Determine collision normal based on which axis was hit last
-        vec2 collision_normal = (dtX < dtY) ? vec2(stepX * -1.0, 0.0) : vec2(0.0, stepY * -1.0);
+        vec2 normal = vec2(0.0);
+        if(side == 0) normal = vec2(-float(stepX), 0.0);
+        else          normal = vec2(0.0, -float(stepY));
 
 
-        if (random_pbr_seed < reflection_chance) {
+        //simulate light
+        float reflChance = currentPixel.reflectiveness; // 0.0 to 1.0
+        float transChance = currentPixel.transmission;  // 0.0 to 1.0
 
-            // SPECULAR REFLECTION (Metallic or Dielectric)
-            vec3 specular_attenuation = mix(vec3(reflectiveness), albedo, metallic);
-            currentLight *= specular_attenuation;
+        vec3 diffuseColor = mix(currentPixel.color.rgb, vec3(0.0), currentPixel.metallic);
+        vec3 absorbedEnergy = currentLight * (1.0 - reflChance - transChance) * diffuseColor * opacity;
 
-            // Perfect reflection for tile grid (flip direction across normal)
-            if (dtX < dtY) {
-                dir.x *= -1.0;
-                stepX = -stepX;
-            } else {
-                dir.y *= -1.0;
-                stepY = -stepY;
+
+        imageAtomicAdd(computeAccuR,movingPos,uint(absorbedEnergy.r * currentPixel.color.a * float(COMPUTE_MULTIPLIER)));
+        imageAtomicAdd(computeAccuG,movingPos,uint(absorbedEnergy.g * currentPixel.color.a * float(COMPUTE_MULTIPLIER)));
+        imageAtomicAdd(computeAccuB,movingPos,uint(absorbedEnergy.b * currentPixel.color.a * float(COMPUTE_MULTIPLIER)));
+
+        rngState = noise2(rngState,t);
+        float roll = rngState;
+        //assums reflectiveness + transmission add up to 1.0 or less
+        if (roll < reflChance) {
+            // --- REFLECTION ---
+
+            // 1. Perfect reflection vector
+            vec2 refDir = reflect(dir, normal);
+
+            // 2. Apply Roughness (Jitter angle)
+            float jitter = (noise2vec(vec2(rngState, t + 1.0)) - 0.5) * currentPixel.roughness * PI;
+            dir = rotate2d(refDir, jitter);
+
+            // 3. Ensure we don't reflect *into* the wall (due to roughness jitter)
+            if(dot(dir, normal) < 0.0) {
+                dir = reflect(dir, normal);
             }
 
-        } else {
+            // 4. Update Light Color (Fresnel / Metal tint)
+            vec3 specularColor = mix(vec3(1.0), currentPixel.color.rgb, currentPixel.metallic);
+            currentLight *= specularColor;
 
-            // DIFFUSE REFLECTION (Dielectric only)
-            vec3 diffuse_attenuation = albedo * (vec3(1.0) - F0);
-            currentLight *= diffuse_attenuation;
-
-            // Calculate new random direction in hemisphere
-            dir = random_diffuse_direction(collision_normal, random_pbr_seed);
-
-            // Update step direction based on new direction
+            // Recalculate tile offsets for new direction
+            tileOffsetX = (dir.x > 0.0 ? 1 : 0);
+            tileOffsetY = (dir.y > 0.0 ? 1 : 0);
             stepX = dir.x > 0.0 ? 1 : -1;
             stepY = dir.y > 0.0 ? 1 : -1;
-        }
 
-        // Update tile offsets for the next iteration based on the new direction
-        tileOffsetX = (dir.x > 0.0 ? 1 : 0);
-        tileOffsetY = (dir.y > 0.0 ? 1 : 0);
+        } else if (roll < reflChance + transChance) {
+            // --- TRANSMISSION ---
+            // Pass through with some attenuation based on color
+            currentLight *= currentPixel.color.rgb;
+
+            // Keep 'dir' same for simple transmission.
+
+        } else {
+            // --- ABSORPTION (Ray Death) ---
+            // The light was fully absorbed by the surface. Stop tracing.
+            return;
+        }
     }
 }
 

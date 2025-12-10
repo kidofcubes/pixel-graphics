@@ -1,106 +1,97 @@
-in vec2 texcoords;
+
+// Accumulation buffers (read-only)
+layout(r32ui, binding = 0) uniform highp uimage2D computeAccuR;
+layout(r32ui, binding = 1) uniform highp uimage2D computeAccuG;
+layout(r32ui, binding = 2) uniform highp uimage2D computeAccuB;
+
+// --- Uniforms from Host ---
+uniform int frame;                  // Current frame/sample count (for initial frame check)
+
+// Loopback Buffer Read (Previous Frame's accumulated color)
 uniform sampler2D fb0tex;
-//uniform usampler2D scene;
-layout (r32ui) readonly uniform uimage2D computeAccuR;
-layout (r32ui) readonly uniform uimage2D computeAccuG;
-layout (r32ui) readonly uniform uimage2D computeAccuB;
-uniform int frame;
 
-
+// --- Scene Data (Layouts match your provided code) ---
 layout (std430) buffer scene
 {
-// We group the 12 floats into an array of vec4s for clearer alignment.
-// NOTE: The struct below must perfectly match the Rust struct's memory layout (48 bytes)
     PixelData scene_pixels[]; // The array of all pixels in your scene
 };
 
+// Assuming PixelData is defined elsewhere and RESOLUTIONX is a constant
 PixelData get_pixel(ivec2 pos){
     return scene_pixels[pos.x+(pos.y*RESOLUTIONX)];
 }
 
+// Tone mapping functions removed as requested.
+
+// Final output color buffer
 layout(location = 0) out vec4 pixelColor;
 
 
-// Simple Reinhard Tone Mapping
-// Compresses high light values into the 0-1 range for LDR display
-vec3 Reinhard(vec3 color) {
-    return color / (color + vec3(1.0));
-}
-
-
 void main() {
-    // 1. Calculate pixel position in image space
-    ivec2 pixel_coord = ivec2(gl_FragCoord.xy);
+    // 1. Get screen coordinates
+    ivec2 pos = ivec2(gl_FragCoord.xy);
 
-    // 2. Read the raw accumulated integer data for the CURRENT FRAME
-    // We assume the total number of samples launched in the Compute Shader
-    // is RESOLUTIONX * RESOLUTIONY (1 ray per pixel).
-    uvec4 r_val = imageLoad(computeAccuR, pixel_coord);
-    uvec4 g_val = imageLoad(computeAccuG, pixel_coord);
-    uvec4 b_val = imageLoad(computeAccuB, pixel_coord);
+    // Safety check: ensure we don't divide by zero
+    float samples = max(1.0, float(frame));
 
-    // We only care about the single value in the red channel (x)
-    vec3 raw_light_sum = vec3(
-    float(r_val.x),
-    float(g_val.x),
-    float(b_val.x)
-    );
+    // --- 2. Calculate Illumination for the CURRENT Frame ---
 
-    // 3. Normalize the Current Frame's Contribution (New Sample)
+    // A. Read raw light counts from the current frame's path tracing
+    uint r_count = imageLoad(computeAccuR, pos).r;
+    uint g_count = imageLoad(computeAccuG, pos).r;
+    uint b_count = imageLoad(computeAccuB, pos).r;
 
-    // Convert the summed integer values back to the actual float light value.
-    vec3 current_frame_light = raw_light_sum / COMPUTE_MULTIPLIER;
+    // B. Calculate the *current frame's* raw illumination contribution (unblended)
+    // We only scale by COMPUTE_MULTIPLIER. Result is in HDR/Linear space.
+    vec3 currentFrameIllumination = vec3(
+    float(r_count),
+    float(g_count),
+    float(b_count)
+    ) / float(COMPUTE_MULTIPLIER);
 
-    // Divide by the number of samples that contributed to this pixel.
-    // Since this is dynamic, we must use a constant approximation for normalization.
-    // Assuming 1 ray per pixel per frame (RESOLUTIONX * RESOLUTIONY samples total)
-    float rays_per_pixel = 1.0;
-    vec3 normalized_new_sample = current_frame_light / rays_per_pixel;
+    // C. Get the original scene pixel data and add emission
+    PixelData scenePixel = get_pixel(pos);
+    vec3 emission = scenePixel.color.rgb * scenePixel.emissiveness * 10.0;
 
-    // 4. Read the Previous Frame's Accumulated Color (History)
-    vec4 history_data = texelFetch(fb0tex, pixel_coord, 0);
-    vec3 previous_accumulated_color = history_data.rgb;
-
-    // 5. Exponential Decay / Temporal Accumulation
-
-    // Decay factor (alpha): Determines the weight of the new sample.
-    // For a dynamic scene, a high alpha value means a fast update (less ghosting).
-    // For a static scene, a low alpha value means smooth convergence.
-    // A common way to calculate alpha is based on the reciprocal of the total samples
-    // accumulated so far, but since your history is always the previous frame,
-    // we use a fixed decay rate (e.g., 5% new sample, 95% history).
-
-    // For dynamic scenes, using a small, fixed alpha is often the best compromise.
-    // The history texture already has gamma/tone mapping applied, so we must
-    // undo those to mix correctly in linear space.
-
-    // Decay Constant (Alpha): Adjust this value (e.g., 0.1 for 10% new contribution)
-    const float ALPHA = 0.1; // 10% new sample, 90% history
-
-    // Undo Gamma Correction from History (assuming sRGB, needed for linear blending)
-    vec3 history_linear = pow(previous_accumulated_color, vec3(2.2));
-
-    // Undo Tone Mapping from History (this is tricky, so often skipped or simplified)
-    // If you tone map in the post-pass, it's safer to read the linear history.
-    // ASSUMPTION: historyTexture stores the final, gamma-corrected color.
-    // We will blend the final LDR colors for simplicity and performance,
-    // as is common in dynamic game engines.
+    // D. Calculate the final color for *this frame only*
+    vec3 currentFrameColor = scenePixel.color.rgb * (currentFrameIllumination + emission);
 
 
-    // Use the simplified LDR blending (common for dynamic RT)
-    vec3 blended_color = mix(previous_accumulated_color, normalized_new_sample, ALPHA);
+    // --- 3. Accumulate with Previous Frame (Exponential Moving Average) ---
 
+    if (frame <= 1) {
+        // First frame: Initialize the buffer with the first sample
+        // We only apply Gamma Correction, as Tone Mapping is removed.
+        vec3 finalColor = pow(currentFrameColor, vec3(1.0/2.2));
+        pixelColor = vec4(finalColor, scenePixel.color.a);
 
-    // 6. Tone Mapping and Gamma Correction (Applied only to the new blended result)
-    // The normalization step (5) now includes the overall accumulation.
+    } else {
+        // Subsequent frames: Use Exponential Moving Average (EMA)
 
-    vec3 final_color_linear = blended_color;
+        // Read the accumulated color (which is LDR/Gamma) from the previous frame's FBO texture
+        vec4 previousFrameData = texelFetch(fb0tex, pos, 0);
+        vec3 previousFrameLDR = previousFrameData.rgb;
 
-    // Reapply Tone Mapping (optional, depends on where you want to tone map)
-    final_color_linear = Reinhard(final_color_linear);
+        // --- CONVERT PREVIOUS COLOR BACK TO HDR/LINEAR SPACE ---
 
-    // Gamma Correction (sRGB standard)
-    final_color_linear = pow(final_color_linear, vec3(1.0/2.2));
+        // 1. Reverse Gamma Correction (Gamma -> Linear)
+        // This takes the LDR color back into the linear/HDR space for correct mixing.
+        vec3 previousFrameHDR = pow(previousFrameLDR, vec3(2.2));
 
-    pixelColor = vec4(final_color_linear, 1.0);
+        // 2. Accumulation (Blending in Linear/HDR Space)
+
+        // Fixed EMA Blending Factor (Alpha):
+        float alpha = 0.05;
+
+        // Blend: new = (1 - alpha) * old_HDR + alpha * new_HDR
+        vec3 blendedHDRColor = mix(previousFrameHDR, currentFrameColor, alpha);
+
+        // --- Final Output Processing (Gamma Correction Only) ---
+
+        // 3. Apply Gamma Correction (standard for display)
+        vec3 finalColor = pow(blendedHDRColor, vec3(1.0/2.2));
+
+        // 4. Output the Final Color
+        pixelColor = vec4(finalColor, scenePixel.color.a);
+    }
 }

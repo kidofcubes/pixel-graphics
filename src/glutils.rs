@@ -42,12 +42,12 @@ pub fn generate_single_pixel(r: u8,g: u8,b: u8,a: u8) -> PixelData{
         r: r as f32 / 255.,
         g: g as f32 / 255.,
         b: b as f32 / 255.,
-        opacity: 0.5,
+        opacity: 1.0,
         // a: a as f32 / 255.,
         emissiveness: 0.0,
-        reflectiveness: 0.0,
+        reflectiveness: 0.04,
         metallic: 0.0,
-        roughness: 0.0,
+        roughness: 0.8,
         
         transmission: 0.0,
         padding_1: 0.0,
@@ -55,11 +55,20 @@ pub fn generate_single_pixel(r: u8,g: u8,b: u8,a: u8) -> PixelData{
         padding_3: 0.0,
     };
     if(r==255 && g==255 && b==255){
-        pixel_data.emissiveness = 1.0;
+        pixel_data.emissiveness = 10.0;
+        pixel_data.r = 1.0;
+        pixel_data.g = 1.0;
+        pixel_data.b = 1.0;
+        // pixel_data.transmission = 0.0;
     }
     if(a==0){
         pixel_data.opacity = 0.001;
-        pixel_data.roughness = 1.0;
+        // pixel_data.transmission = 1.0;
+        pixel_data.reflectiveness = 0.0;
+    }else{
+        // pixel_data.transmission = 0.1;
+        pixel_data.reflectiveness= 0.9;
+
     }
     return pixel_data;
 }
