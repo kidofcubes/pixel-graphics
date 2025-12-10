@@ -48,6 +48,11 @@ void main() {
     float(g_count),
     float(b_count)
     ) / float(COMPUTE_MULTIPLIER);
+//    currentFrameIllumination = vec3(
+//        clamp(currentFrameIllumination.r, 0.0, 1.0),
+//        clamp(currentFrameIllumination.g, 0.0, 1.0),
+//        clamp(currentFrameIllumination.b, 0.0, 1.0)
+//    );
 
     // C. Get the original scene pixel data and add emission
     PixelData scenePixel = get_pixel(pos);
@@ -56,43 +61,17 @@ void main() {
 
     // D. Calculate the final color for *this frame only*
     vec3 currentFrameColor = scenePixel.color.rgb * (currentFrameIllumination + emission);
+    currentFrameColor = currentFrameIllumination;
 
 
     // --- 3. Accumulate with Previous Frame (Exponential Moving Average) ---
 
-    if (frame <= 1) {
-        // First frame: Initialize the buffer with the first sample
-        // We only apply Gamma Correction, as Tone Mapping is removed.
-        vec3 finalColor = pow(currentFrameColor, vec3(1.0/2.2));
-        pixelColor = vec4(finalColor, scenePixel.color.a);
+    // Subsequent frames: Use Exponential Moving Average (EMA)
 
-    } else {
-        // Subsequent frames: Use Exponential Moving Average (EMA)
+    // Read the accumulated color (which is LDR/Gamma) from the previous frame's FBO texture
+    vec4 previousFrameData = texelFetch(fb0tex, pos, 0);
+    vec3 previousFrameLDR = previousFrameData.rgb;
+    float alpha = 0.01;
+    pixelColor = vec4(mix(previousFrameLDR,currentFrameColor,alpha), scenePixel.color.a);
 
-        // Read the accumulated color (which is LDR/Gamma) from the previous frame's FBO texture
-        vec4 previousFrameData = texelFetch(fb0tex, pos, 0);
-        vec3 previousFrameLDR = previousFrameData.rgb;
-
-        // --- CONVERT PREVIOUS COLOR BACK TO HDR/LINEAR SPACE ---
-
-        // 1. Reverse Gamma Correction (Gamma -> Linear)
-        // This takes the LDR color back into the linear/HDR space for correct mixing.
-        vec3 previousFrameHDR = pow(previousFrameLDR, vec3(2.2));
-
-        // 2. Accumulation (Blending in Linear/HDR Space)
-
-        // Fixed EMA Blending Factor (Alpha):
-        float alpha = 0.05;
-
-        // Blend: new = (1 - alpha) * old_HDR + alpha * new_HDR
-        vec3 blendedHDRColor = mix(previousFrameHDR, currentFrameColor, alpha);
-
-        // --- Final Output Processing (Gamma Correction Only) ---
-
-        // 3. Apply Gamma Correction (standard for display)
-        vec3 finalColor = pow(blendedHDRColor, vec3(1.0/2.2));
-
-        // 4. Output the Final Color
-        pixelColor = vec4(finalColor, scenePixel.color.a);
-    }
 }

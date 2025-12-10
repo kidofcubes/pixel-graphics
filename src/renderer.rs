@@ -12,6 +12,7 @@ use crate::{gl, glutils, pack2f16, pack4u8};
 use crate::gl::types::{GLint, GLsizei, GLsizeiptr, GLuint};
 use image::{ImageReader, RgbaImage};
 use std::mem;
+use std::time::{SystemTime, UNIX_EPOCH};
 use crate::glutils::{create_texture, generate_light_data, generate_pixel_data, load_image};
 
 #[derive(Debug, Eq, PartialEq, Hash, Copy, Clone)]
@@ -93,6 +94,7 @@ pub struct Renderer {
     uniform_locations: HashMap<Program, HashMap<Uniform, GLint>>,
     bindings: HashMap<String, (Bindings,GLuint)>,
     frame: i32,
+    last_frame: u64,
     scene: RgbaImage,
     scene_mapped_ptr: *mut c_void,
 }
@@ -367,6 +369,7 @@ impl Renderer {
                 fb0,
                 gl,
                 frame: 0,
+                last_frame: 0,
                 scene,
                 scene_mapped_ptr
             }
@@ -390,6 +393,10 @@ impl Renderer {
     pub fn draw(&mut self) {
         self.draw_with_clear_color(0.0, 0.0, 0.0, 0.7);
         self.frame=self.frame+1;
+        let new_time = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_millis() as u64;
+        let fps = 1000.0/((new_time-self.last_frame) as f64);
+        println!("fps is {:?}",fps);
+        self.last_frame=new_time;
     }
 
     pub fn draw_with_clear_color(
@@ -433,7 +440,8 @@ impl Renderer {
             self.gl.ClearTexImage(self.bindings.get(&Bindings::ComputeAccuG.get_id()).unwrap().1, 0, 0+gl::RED_INTEGER, 0+gl::UNSIGNED_INT, std::ptr::null());
             self.gl.ClearTexImage(self.bindings.get(&Bindings::ComputeAccuB.get_id()).unwrap().1, 0, 0+gl::RED_INTEGER, 0+gl::UNSIGNED_INT, std::ptr::null());
             self.gl.UseProgram(*self.programs.get(&Program::ComputeRaytracing).unwrap());
-            self.gl.DispatchCompute(1,360,1);
+            // self.gl.DispatchCompute(1,360,1);
+            self.gl.DispatchCompute(128,1,1);
             self.gl.MemoryBarrier(gl::SHADER_IMAGE_ACCESS_BARRIER_BIT);
 
             self.gl.UseProgram(*self.programs.get(&Program::Accumulation).unwrap());

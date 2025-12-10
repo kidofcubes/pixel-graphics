@@ -1,7 +1,7 @@
 #version 460
 #extension GL_EXT_gpu_shader4 : enable
 #define KEEP_FRAMES 100
-#define COMPUTE_MULTIPLIER 1000
+#define COMPUTE_MULTIPLIER 1000000
 
 #define RESOLUTIONX 640
 #define RESOLUTIONY 360
