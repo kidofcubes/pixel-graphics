@@ -7,7 +7,8 @@
 #define RESOLUTIONY 360
 
 //#define LIGHT_MAX_RADIUS 64.0
-#define LIGHT_MAX_RADIUS 256.0
+//#define LIGHT_MAX_RADIUS 256.0
+#define LIGHT_MAX_RADIUS 1024.0
 #define LIGHT_MIN_DIST 100000.0
 #define LIGHT_POWER_DISABLED 1.0
 float linearFalloff = (1.0/

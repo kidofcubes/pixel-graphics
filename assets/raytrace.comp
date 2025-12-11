@@ -103,9 +103,9 @@ void pathTracing(in vec2 initPos, in vec2 dir, vec3 currentLight, in float seed)
     int side = 0;
 
     for(int i=0;i<(int(LIGHT_MAX_RADIUS*2.0));i++) {
-        if(length(currentLight) < 170.0){
-            return;
-        }
+//        if(length(currentLight) < 170.0){
+//            return;
+//        }
         float dtX = (float(movingPos.x+tileOffsetX) - curPos.x) / dir.x; // distances to next borders
         float dtY = (float(movingPos.y+tileOffsetY) - curPos.y) / dir.y; // distances to next borders
         float dt = min(dtX, dtY);
@@ -293,10 +293,8 @@ void main(){
     }else{
         float initSeed = noise2(float(frame),float(seed)/100.0);
         vec2 dir;
-        vec2 initPos;
+//        vec2 initPos;
 
-        i = (gl_GlobalInvocationID.x+frame)%((RESOLUTIONX + RESOLUTIONY) - 1);
-        i = uint(noise2(initSeed, float(i)) * ((RESOLUTIONX + RESOLUTIONY) - 1));
 
         if(timeOfDay<0.5){ // day
             dir = vec2(-cos(timeOfDay*PI*2.0),-sin(timeOfDay*PI*2.0));
@@ -304,19 +302,51 @@ void main(){
             dir = vec2(cos(timeOfDay*PI*2.0),sin(timeOfDay*PI*2.0)); //moon is oppisite the sun (not really)
         }
 
-        if(i<RESOLUTIONX){ //top edge
-            initPos = vec2(i,RESOLUTIONY-1);
-        }else{
-            if(dir.x < 0.0){ // shining in from the right
-                initPos = vec2(RESOLUTIONX-1,i-RESOLUTIONX);
-            }else{
-                initPos = vec2(0,i-RESOLUTIONX);
-            }
-        }
-        vec3 currentLight = vec3(1.0,0.9,0.6) * 5000.0;
+        vec2 perp = vec2(-dir.y,dir.x);
 
-        initPos.x += noise3(initSeed,initPos.x,initPos.y);
-        initPos.y += noise3(initSeed,initPos.x,initPos.y);
+        float p0 = dot(vec2(0,0),perp);
+        float p1 = dot(vec2(0,RESOLUTIONY),perp);
+        float p2 = dot(vec2(RESOLUTIONX,RESOLUTIONY),perp);
+        float p3 = dot(vec2(RESOLUTIONX,0),perp);
+
+        float minPerp = min(min(p0,p1),min(p2,p3));
+        float maxPerp = max(max(p0,p1),max(p2,p3));
+
+        vec2 initPos = (perp*mix(minPerp, maxPerp, noise2(float(gl_GlobalInvocationID.x),float(frame))))-(dir*(sqrt(RESOLUTIONX*RESOLUTIONY)+10.0));
+        float t0 = (initPos.y-(RESOLUTIONY-1)) / -dir.y;
+        float t1;
+        if(dir.x<0.0){ // shining in from the right
+            t1 = (initPos.x-(RESOLUTIONX-1)) / -dir.x;
+        }else{
+            t1 = (initPos.x-0) / -dir.x;
+        }
+        initPos = initPos + (dir*max(t0,t1));
+//        startPos = startPos + (dir*max(t0,t1)) + (dir*0.1);
+
+
+        if(t0>t1){ // enters from top edge
+        }else{
+        }
+
+
+//        if(i<RESOLUTIONX){ //top edge
+//            initPos = vec2(i,RESOLUTIONY-1);
+//        }else{
+//            if(dir.x < 0.0){ // shining in from the right
+//                initPos = vec2(RESOLUTIONX-1,i-RESOLUTIONX);
+//            }else{
+//                initPos = vec2(0,i-RESOLUTIONX);
+//            }
+//        }
+        vec3 currentLight;
+        if(timeOfDay<0.5){
+            currentLight = vec3(1.0,0.9,0.6) * 5000.0;
+        }else{
+            currentLight = vec3(0.7,0.7,0.8) * 250.0;
+        }
+
+//        initPos.x += noise3(initSeed,initPos.x,initPos.y);
+//        initPos.y += noise3(initSeed,initPos.x,initPos.y);
         pathTracing(initPos, dir, currentLight, initSeed);
     }
 }
