@@ -24,13 +24,13 @@ struct PixelData {
     vec4 color;// r, g, b, opacity
 
 // Block 2 (16 bytes)
+    float transmission;
     float emissiveness;
     float reflectiveness; // 0.0 - 1.0
     float metallic; // 0.0 - 1.0
-    float roughness; // 0.0 - 1.0
 
 // Block 3 (16 bytes)
-    float transmission;
+    float roughness; // 0.0 - 1.0
     float padding_0;
     float padding_1;
     float padding_2;

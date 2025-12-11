@@ -107,12 +107,12 @@ pub(crate) struct PixelData {
     pub b: f32,
     pub opacity: f32,
 
+    pub transmission: f32,
     pub emissiveness: f32,
     pub reflectiveness: f32,
     pub metallic: f32,
+    
     pub roughness: f32,
-
-    pub transmission: f32,
     pub padding_1: f32,
     pub padding_2: f32,
     pub padding_3: f32,
@@ -171,7 +171,7 @@ impl Renderer {
             // gl.SamplerParameteri(nearest_sampler, gl::TEXTURE_WRAP_S, gl::CLAMP_TO_EDGE as i32);
 
 
-            let scene = load_image(Path::new("assets/scene640x360.png"));
+            let scene = load_image(Path::new("assets/scene640x360test.png"));
             let width = scene.width();
             let height = scene.height();
             // println!("count1 and 2 {} {}",count1, count2);

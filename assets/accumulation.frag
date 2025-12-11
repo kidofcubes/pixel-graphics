@@ -31,11 +31,6 @@ void main() {
     // 1. Get screen coordinates
     ivec2 pos = ivec2(gl_FragCoord.xy);
 
-    // Safety check: ensure we don't divide by zero
-    float samples = max(1.0, float(frame));
-
-    // --- 2. Calculate Illumination for the CURRENT Frame ---
-
     // A. Read raw light counts from the current frame's path tracing
     uint r_count = imageLoad(computeAccuR, pos).r;
     uint g_count = imageLoad(computeAccuG, pos).r;

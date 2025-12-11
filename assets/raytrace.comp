@@ -47,6 +47,22 @@ uniform int lightCount; // Standard uniform to tell the shader how many lights a
 #define COMPUTE_MULTIPLIER_PORPORTION (float(COMPUTE_MULTIPLIER) / float(lightCount))
 
 
+// NEW: Function to generate a biased random angle (Simplified 2D HG-like sampling)
+float sampleBiasedAngle(float currentAngle, float g, float rngValue) {
+    // This is a simplified, non-physically-based bias, but it demonstrates the concept
+    // of making the new angle dependent on the old angle and the anisotropy (g).
+
+    // Convert random value (0 to 1) to a scatter angle (-PI to PI)
+    float uniformScatterAngle = (rngValue - 0.5) * 2.0 * PI;
+
+    // Mix the uniform angle with 0.0 (perfect forward) based on the anisotropy 'g'.
+    // A small 'g' means mostly uniform; a large 'g' means mostly forward.
+    float biasedScatterAngle = mix(uniformScatterAngle, 0.0, abs(g));
+
+    // Combine with the current angle
+    return currentAngle + biasedScatterAngle;
+}
+
 //i generate the random dir
 void pathTracing(in ivec2 pos/*, float light*/, in float seed){
 
@@ -81,13 +97,18 @@ void pathTracing(in ivec2 pos/*, float light*/, in float seed){
 
     vec3 currentLight = currentPixel.color.rgb * currentPixel.emissiveness;
 
-    float rngState = seed + initSeed;
+    imageAtomicAdd(computeAccuR,movingPos,uint(currentLight.r * float(COMPUTE_MULTIPLIER_PORPORTION)));
+    imageAtomicAdd(computeAccuG,movingPos,uint(currentLight.g * float(COMPUTE_MULTIPLIER_PORPORTION)));
+    imageAtomicAdd(computeAccuB,movingPos,uint(currentLight.b * float(COMPUTE_MULTIPLIER_PORPORTION)));
+
+    float rngState = noise2(seed,initSeed);
 
     int side = 0;
 
     for(int i=0;i<(int(LIGHT_MAX_RADIUS*2.0));i++) {
-        if(max(currentLight.r, max(currentLight.g, currentLight.b)) < 0.01){
-            return;
+//        if(max(currentLight.r, max(currentLight.g, currentLight.b)) < 0.1){
+        if(length(currentLight) < 170.0){
+//            return;
         }
         float dtX = (float(movingPos.x+tileOffsetX) - curPos.x) / dir.x; // distances to next borders
         float dtY = (float(movingPos.y+tileOffsetY) - curPos.y) / dir.y; // distances to next borders
@@ -115,11 +136,12 @@ void pathTracing(in ivec2 pos/*, float light*/, in float seed){
 
             // 1. Calculate scattered light (light made visible)
             // Energy scattered = Current Light * Density * Distance Traveled
-            float scatteringRate = 0.02;
+            float scatteringRate = 0.05;
 
             // Apply a tint to the volume/air itself for effect (e.g., blueish/fog)
             vec3 volumeColor = vec3(0.8, 0.8, 0.8) * 0.2;
             vec3 scatteredLight = currentLight * scatteringRate * volumeColor;
+//            vec3 scatteredLight = min(currentLight,vec3(10.0,10.0,10.0)) * scatteringRate * volumeColor;
 
             // 2. Deposit the scattered light into the accumulator
             // This is the core step that makes the ray visible in the grid cell.
@@ -129,8 +151,30 @@ void pathTracing(in ivec2 pos/*, float light*/, in float seed){
 
             // 3. Apply Attenuation (Light loss from the ray)
             // The light remaining in the ray path must be reduced.
-            float attenuationFactor = exp(-(0.005) * dt);
-            currentLight *= attenuationFactor;
+//            float attenuationFactor = exp(-(0.005) * dt);
+//            currentLight *= attenuationFactor;
+
+            // 4. Check for Re-scatter (Ray Bounce in Air)
+            rngState = noise2(rngState,t); // Update RNG state
+            float rollVolumetric = rngState;
+
+            if (rollVolumetric < 0.05) {
+                // If rolled true, change direction randomly (like a diffuse bounce)
+
+                // New random direction
+                float newRandomDir = sampleBiasedAngle(atan(dir.y,dir.x), 0.8, noise3(rngState, curPos.x, curPos.y));
+                dir = vec2(cos(newRandomDir), sin(newRandomDir));
+
+                // Recalculate DDA steps for the new direction
+                tileOffsetX = (dir.x > 0.0 ? 1 : 0);
+                tileOffsetY = (dir.y > 0.0 ? 1 : 0);
+                stepX = dir.x > 0.0 ? 1 : -1;
+                stepY = dir.y > 0.0 ? 1 : -1;
+
+                // IMPORTANT: Since the light bounced, we can optionally apply a slight
+                // loss of energy to simulate the inefficiencies of the scatter.
+                // currentLight *= 0.9; // Optional energy reduction
+            }
             continue;
         }
 
@@ -145,7 +189,8 @@ void pathTracing(in ivec2 pos/*, float light*/, in float seed){
 
         vec3 diffuseColor = mix(currentPixel.color.rgb, vec3(0.0), currentPixel.metallic);
 //        vec3 absorbedEnergy = currentLight * (1.0 - reflChance - transChance) * diffuseColor * opacity;
-        vec3 absorbedEnergy = currentLight * (1.0 - reflChance) * diffuseColor * opacity;
+//        vec3 absorbedEnergy = currentLight * (1.0 - reflChance) * diffuseColor * opacity;
+        vec3 absorbedEnergy = currentLight * (1.0) * diffuseColor * opacity;
 
 
         imageAtomicAdd(computeAccuR,movingPos,uint(absorbedEnergy.r * currentPixel.color.a * float(COMPUTE_MULTIPLIER_PORPORTION)));
@@ -184,7 +229,8 @@ void pathTracing(in ivec2 pos/*, float light*/, in float seed){
             // --- TRANSMISSION ---
             // Pass through with some attenuation based on color
 //            currentLight *= currentPixel.color.rgb;
-
+//            currentLight *= pow(normalize(currentPixel.color.rgb) * sqrt(3), vec3(opacity)) * 0.25;
+//            currentLight *= pow(normalize(currentPixel.color.rgb), vec3(opacity));
             // Keep 'dir' same for simple transmission.
 
         } else {
@@ -222,7 +268,7 @@ void main(){
 //    imageAtomicAdd(computeAccuR,ivec2(gl_GlobalInvocationID.xy),uint(0.1 * float(COMPUTE_MULTIPLIER)));
 //    imageAtomicAdd(computeAccuG,ivec2(gl_GlobalInvocationID.xy),uint(0.1 * float(COMPUTE_MULTIPLIER)));
 //    imageAtomicAdd(computeAccuB,ivec2(gl_GlobalInvocationID.xy),uint(0.1 * float(COMPUTE_MULTIPLIER)));
-    pathTracing(pos,seed);
+    pathTracing(pos,(float(seed)/100.0));
 //    imageAtomicAdd(computeAccu,pos,uint(0.01 * float(COMPUTE_MULTIPLIER)))        ;
 
 
