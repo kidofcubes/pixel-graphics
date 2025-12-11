@@ -9,6 +9,10 @@ uniform int frame;
 //uniform uimage2D sumG; // integer accumulator G
 //uniform uimage2D sumB; // integer accumulator B
 
+//uniform int realTime;
+uniform float timeOfDay;
+uniform int sunMode;
+
 //layout (r32ui, binding = 0) uniform uimage2D computeAccu; // integer hit count
 layout (r32ui, binding = 0) uniform uimage2D computeAccuR;
 layout (r32ui, binding = 1) uniform uimage2D computeAccuG;
@@ -63,16 +67,11 @@ float sampleBiasedAngle(float currentAngle, float g, float rngValue) {
     return currentAngle + biasedScatterAngle;
 }
 
-//i generate the random dir
-void pathTracing(in ivec2 pos/*, float light*/, in float seed){
 
-    float initSeed = noise2(float(frame),seed);
-    vec2 initPos = vec2(pos);
-    initPos.x += noise3(initSeed,initPos.x,initPos.y);
-    initPos.y += noise3(initSeed,initPos.x,initPos.y);
 
-    float randomDir = noise3(initSeed,initPos.x,initPos.y)*2.0*PI;
-    vec2 dir = vec2(cos(randomDir),sin(randomDir));
+void pathTracing(in vec2 initPos, in vec2 dir, vec3 currentLight, in float seed){
+
+
 
     // -1 to compensate for 1-indexed tile coordinates
     int tileOffsetX = (dir.x > 0.0 ? 1 : 0);
@@ -91,24 +90,21 @@ void pathTracing(in ivec2 pos/*, float light*/, in float seed){
         dir.y = FLT_MIN;
     }
 
-    ivec2 movingPos = ivec2(int(pos.x),int(pos.y));
+    ivec2 movingPos = ivec2(int(initPos.x),int(initPos.y));
     float dist = length(curPos-initPos);
-    PixelData currentPixel = get_pixel(movingPos);
-
-    vec3 currentLight = currentPixel.color.rgb * currentPixel.emissiveness;
+    PixelData currentPixel;
 
     imageAtomicAdd(computeAccuR,movingPos,uint(currentLight.r * float(COMPUTE_MULTIPLIER_PORPORTION)));
     imageAtomicAdd(computeAccuG,movingPos,uint(currentLight.g * float(COMPUTE_MULTIPLIER_PORPORTION)));
     imageAtomicAdd(computeAccuB,movingPos,uint(currentLight.b * float(COMPUTE_MULTIPLIER_PORPORTION)));
 
-    float rngState = noise2(seed,initSeed);
+    float rngState = seed;
 
     int side = 0;
 
     for(int i=0;i<(int(LIGHT_MAX_RADIUS*2.0));i++) {
-//        if(max(currentLight.r, max(currentLight.g, currentLight.b)) < 0.1){
         if(length(currentLight) < 170.0){
-//            return;
+            return;
         }
         float dtX = (float(movingPos.x+tileOffsetX) - curPos.x) / dir.x; // distances to next borders
         float dtY = (float(movingPos.y+tileOffsetY) - curPos.y) / dir.y; // distances to next borders
@@ -141,7 +137,7 @@ void pathTracing(in ivec2 pos/*, float light*/, in float seed){
             // Apply a tint to the volume/air itself for effect (e.g., blueish/fog)
             vec3 volumeColor = vec3(0.8, 0.8, 0.8) * 0.2;
             vec3 scatteredLight = currentLight * scatteringRate * volumeColor;
-//            vec3 scatteredLight = min(currentLight,vec3(10.0,10.0,10.0)) * scatteringRate * volumeColor;
+            //            vec3 scatteredLight = min(currentLight,vec3(10.0,10.0,10.0)) * scatteringRate * volumeColor;
 
             // 2. Deposit the scattered light into the accumulator
             // This is the core step that makes the ray visible in the grid cell.
@@ -151,14 +147,14 @@ void pathTracing(in ivec2 pos/*, float light*/, in float seed){
 
             // 3. Apply Attenuation (Light loss from the ray)
             // The light remaining in the ray path must be reduced.
-//            float attenuationFactor = exp(-(0.005) * dt);
-//            currentLight *= attenuationFactor;
+            //            float attenuationFactor = exp(-(0.005) * dt);
+            //            currentLight *= attenuationFactor;
 
             // 4. Check for Re-scatter (Ray Bounce in Air)
             rngState = noise2(rngState,t); // Update RNG state
             float rollVolumetric = rngState;
 
-            if (rollVolumetric < 0.05) {
+            if (rollVolumetric < 0.05 && sunMode==0) {
                 // If rolled true, change direction randomly (like a diffuse bounce)
 
                 // New random direction
@@ -188,8 +184,8 @@ void pathTracing(in ivec2 pos/*, float light*/, in float seed){
         float transChance = currentPixel.transmission;  // 0.0 to 1.0
 
         vec3 diffuseColor = mix(currentPixel.color.rgb, vec3(0.0), currentPixel.metallic);
-//        vec3 absorbedEnergy = currentLight * (1.0 - reflChance - transChance) * diffuseColor * opacity;
-//        vec3 absorbedEnergy = currentLight * (1.0 - reflChance) * diffuseColor * opacity;
+        //        vec3 absorbedEnergy = currentLight * (1.0 - reflChance - transChance) * diffuseColor * opacity;
+        //        vec3 absorbedEnergy = currentLight * (1.0 - reflChance) * diffuseColor * opacity;
         vec3 absorbedEnergy = currentLight * (1.0) * diffuseColor * opacity;
 
 
@@ -228,9 +224,9 @@ void pathTracing(in ivec2 pos/*, float light*/, in float seed){
         } else if (roll < reflChance + transChance) {
             // --- TRANSMISSION ---
             // Pass through with some attenuation based on color
-//            currentLight *= currentPixel.color.rgb;
-//            currentLight *= pow(normalize(currentPixel.color.rgb) * sqrt(3), vec3(opacity)) * 0.25;
-//            currentLight *= pow(normalize(currentPixel.color.rgb), vec3(opacity));
+            //            currentLight *= currentPixel.color.rgb;
+            //            currentLight *= pow(normalize(currentPixel.color.rgb) * sqrt(3), vec3(opacity)) * 0.25;
+            //            currentLight *= pow(normalize(currentPixel.color.rgb), vec3(opacity));
             // Keep 'dir' same for simple transmission.
 
         } else {
@@ -239,6 +235,25 @@ void pathTracing(in ivec2 pos/*, float light*/, in float seed){
             return;
         }
     }
+}
+
+
+
+
+//i generate the random dir
+void pathTracing(in ivec2 pos, in float seed){
+    float initSeed = noise2(float(frame),seed);
+    vec2 initPos = vec2(pos);
+    initPos.x += noise3(initSeed,initPos.x,initPos.y);
+    initPos.y += noise3(initSeed,initPos.x,initPos.y);
+
+    float randomDir = noise3(initSeed,initPos.x,initPos.y)*2.0*PI;
+    vec2 dir = vec2(cos(randomDir),sin(randomDir));
+
+    PixelData currentPixel = get_pixel(pos);
+    vec3 currentLight = currentPixel.color.rgb * currentPixel.emissiveness;
+
+    pathTracing(initPos, dir, currentLight, initSeed);
 }
 
 
@@ -256,22 +271,52 @@ void main(){
 //    uint i = (gl_GlobalInvocationID.x + (gl_GlobalInvocationID.y * RESOLUTIONX))%lightCount;
     uint seed = (gl_GlobalInvocationID.x + (gl_GlobalInvocationID.y * 512)) + frame;
     uint i = seed%lightCount;
-    ivec2 pos = ivec2(light_points[i].x, light_points[i].y);
-//    pos = ivec2(i);
-//    pos = ivec2()
-//    pos = ivec2(gl_GlobalInvocationID.xy);
-//    imageAtomicAdd(computeAccuR,pos,uint(100.0 * float(COMPUTE_MULTIPLIER)));
-//    imageAtomicAdd(computeAccuG,pos,uint(100.0 * float(COMPUTE_MULTIPLIER)));
-//    imageAtomicAdd(computeAccuB,pos,uint(100.0 * float(COMPUTE_MULTIPLIER)));
+    if(sunMode == 0){
+        ivec2 pos = ivec2(light_points[i].x, light_points[i].y);
+        //    pos = ivec2(i);
+        //    pos = ivec2()
+        //    pos = ivec2(gl_GlobalInvocationID.xy);
+        //    imageAtomicAdd(computeAccuR,pos,uint(100.0 * float(COMPUTE_MULTIPLIER)));
+        //    imageAtomicAdd(computeAccuG,pos,uint(100.0 * float(COMPUTE_MULTIPLIER)));
+        //    imageAtomicAdd(computeAccuB,pos,uint(100.0 * float(COMPUTE_MULTIPLIER)));
 
 
-//    imageAtomicAdd(computeAccuR,ivec2(gl_GlobalInvocationID.xy),uint(0.1 * float(COMPUTE_MULTIPLIER)));
-//    imageAtomicAdd(computeAccuG,ivec2(gl_GlobalInvocationID.xy),uint(0.1 * float(COMPUTE_MULTIPLIER)));
-//    imageAtomicAdd(computeAccuB,ivec2(gl_GlobalInvocationID.xy),uint(0.1 * float(COMPUTE_MULTIPLIER)));
-    pathTracing(pos,(float(seed)/100.0));
-//    imageAtomicAdd(computeAccu,pos,uint(0.01 * float(COMPUTE_MULTIPLIER)))        ;
+        //    imageAtomicAdd(computeAccuR,ivec2(gl_GlobalInvocationID.xy),uint(0.1 * float(COMPUTE_MULTIPLIER)));
+        //    imageAtomicAdd(computeAccuG,ivec2(gl_GlobalInvocationID.xy),uint(0.1 * float(COMPUTE_MULTIPLIER)));
+        //    imageAtomicAdd(computeAccuB,ivec2(gl_GlobalInvocationID.xy),uint(0.1 * float(COMPUTE_MULTIPLIER)));
+//        pathTracing(pos, (float(seed)/100.0));
+        //    imageAtomicAdd(computeAccu,pos,uint(0.01 * float(COMPUTE_MULTIPLIER)))        ;
 
 
-//    pos = ivec2(0,0);
-//    imageAtomicAdd(computeAccu,pos,1u * COMPUTE_MULTIPLIER);
+        //    pos = ivec2(0,0);
+        //    imageAtomicAdd(computeAccu,pos,1u * COMPUTE_MULTIPLIER);
+    }else{
+        float initSeed = noise2(float(frame),float(seed)/100.0);
+        vec2 dir;
+        vec2 initPos;
+
+        i = (gl_GlobalInvocationID.x+frame)%((RESOLUTIONX + RESOLUTIONY) - 1);
+        i = uint(noise2(initSeed, float(i)) * ((RESOLUTIONX + RESOLUTIONY) - 1));
+
+        if(timeOfDay<0.5){ // day
+            dir = vec2(-cos(timeOfDay*PI*2.0),-sin(timeOfDay*PI*2.0));
+        }else{
+            dir = vec2(cos(timeOfDay*PI*2.0),sin(timeOfDay*PI*2.0)); //moon is oppisite the sun (not really)
+        }
+
+        if(i<RESOLUTIONX){ //top edge
+            initPos = vec2(i,RESOLUTIONY-1);
+        }else{
+            if(dir.x < 0.0){ // shining in from the right
+                initPos = vec2(RESOLUTIONX-1,i-RESOLUTIONX);
+            }else{
+                initPos = vec2(0,i-RESOLUTIONX);
+            }
+        }
+        vec3 currentLight = vec3(1.0,0.9,0.6) * 5000.0;
+
+        initPos.x += noise3(initSeed,initPos.x,initPos.y);
+        initPos.y += noise3(initSeed,initPos.x,initPos.y);
+        pathTracing(initPos, dir, currentLight, initSeed);
+    }
 }

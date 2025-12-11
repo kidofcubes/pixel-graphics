@@ -1,3 +1,4 @@
+use std::f32::consts::TAU;
 use std::ffi::CStr;
 use std::fs;
 use std::os::raw::c_void;
@@ -23,7 +24,7 @@ pub fn load_image(path: &Path) -> RgbaImage {
 
     rgba
 }
-pub fn generate_light_data(width: u32, pixel_data: &Vec<PixelData>) -> Vec<LightPoint> {
+pub fn generate_light_data(width: u32, height: u32, pixel_data: &Vec<PixelData>) -> Vec<LightPoint> {
     let mut x:u32 = 0;
     let mut y:u32 = 0;
     let mut light_points = Vec::new();
@@ -32,8 +33,8 @@ pub fn generate_light_data(width: u32, pixel_data: &Vec<PixelData>) -> Vec<Light
             light_points.push(LightPoint {
                 x: x as f32,
                 y: y as f32,
-                emissiveness: pixel.emissiveness,
-                padding: 0.0,
+                padding_0: 0.0,
+                padding_1: 0.0,
             });
         }
         x+=1;
@@ -42,6 +43,29 @@ pub fn generate_light_data(width: u32, pixel_data: &Vec<PixelData>) -> Vec<Light
             y+=1;
         }
     }
+
+    // let time_of_day = 0.125;
+    // //sun pos is cos(2pi(timeOfDay)),sin(2pi(timeOfDay))
+    // let sun_x = (2.0*TAU* time_of_day).cos();
+    // let sun_y = (2.0*TAU* time_of_day).sin();
+    // if(sun_y >0.0){
+    //     for x in 0..width {
+    //         light_points.push(LightPoint {
+    //             x: x as f32,
+    //             y: (height-1) as f32,
+    //             sun_x,
+    //             sun_y
+    //         })
+    //     }
+    //     for y in 0..height{
+    //         light_points.push(LightPoint {
+    //             x: (if sun_x>0.0 {width-1}else{0}) as f32,
+    //             y: y as f32,
+    //             sun_x,
+    //             sun_y
+    //         })
+    //     }
+    // }
     return light_points;
 }
 

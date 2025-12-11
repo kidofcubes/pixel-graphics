@@ -12,7 +12,7 @@ use crate::{gl, glutils, pack2f16, pack4u8};
 use crate::gl::types::{GLint, GLsizei, GLsizeiptr, GLuint};
 use image::{ImageReader, RgbaImage};
 use std::mem;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Instant, SystemTime, UNIX_EPOCH};
 use crate::glutils::{create_texture, generate_light_data, generate_pixel_data, load_image};
 
 #[derive(Debug, Eq, PartialEq, Hash, Copy, Clone)]
@@ -39,15 +39,21 @@ impl Bindings {
 
 
 #[derive(Debug, Eq, PartialEq, Hash, Copy, Clone)]
-enum Uniform {
+pub enum Uniform {
     Frame,
-    LightCount
+    LightCount,
+    TimeOfDay,
+    SunMode,
+    RealTime,
 }
 impl Uniform {
     fn get_id(&self) -> &str {
         match self{
             Uniform::Frame => "frame",
             Uniform::LightCount => "lightCount",
+            Uniform::TimeOfDay => "timeOfDay",
+            Uniform::SunMode => "sunMode",
+            Uniform::RealTime => "realTime",
         }
     }
 }
@@ -74,15 +80,14 @@ pub struct LightPoint {
     pub y: f32,
 
     // Intensity/Emissivity
-    pub emissiveness: f32,
+    pub padding_0: f32,
 
     // Padding to ensure Vec4 alignment (16 bytes total)
-    pub padding: f32,
+    pub padding_1: f32,
 }
 
 // A helper type for the list of lights
 pub const MAX_LIGHTS: usize = 1024;
-pub type LightList = [LightPoint; MAX_LIGHTS];
 
 
 pub struct Renderer {
@@ -95,6 +100,7 @@ pub struct Renderer {
     bindings: HashMap<String, (Bindings,GLuint)>,
     frame: i32,
     last_frame: u64,
+    start_time: Instant,
     scene: RgbaImage,
     scene_mapped_ptr: *mut c_void,
 }
@@ -111,7 +117,7 @@ pub(crate) struct PixelData {
     pub emissiveness: f32,
     pub reflectiveness: f32,
     pub metallic: f32,
-    
+
     pub roughness: f32,
     pub padding_1: f32,
     pub padding_2: f32,
@@ -347,7 +353,7 @@ impl Renderer {
 
 
                 let mut uniforms = HashMap::new();
-                for uniform in [Uniform::Frame, Uniform::LightCount] {
+                for uniform in [Uniform::Frame, Uniform::LightCount, Uniform::RealTime, Uniform::SunMode, Uniform::TimeOfDay] {
                     // gl.GetUniforms
                     // set this up to string and all uniforms later maybe idk
                     let loc = gl.GetUniformLocation(*program, CString::new(uniform.get_id().clone().as_bytes().to_vec()).unwrap().as_ptr());
@@ -370,6 +376,7 @@ impl Renderer {
                 gl,
                 frame: 0,
                 last_frame: 0,
+                start_time: Instant::now(),
                 scene,
                 scene_mapped_ptr
             }
@@ -386,6 +393,23 @@ impl Renderer {
             }
             if let Some(loc) = self.uniform_locations.get(program_name).unwrap().get(&Uniform::LightCount) {
                 self.gl.Uniform1i(*loc, light_count as i32);
+            }
+        }
+    }
+
+    pub unsafe fn update_uniformi(&self, uniform: &Uniform, value: i32){
+        for (program_name, program) in self.programs.iter() {
+            self.gl.UseProgram(*program);
+            if let Some(loc) = self.uniform_locations.get(program_name).unwrap().get(uniform) {
+                self.gl.Uniform1i(*loc, value);
+            }
+        }
+    }
+    pub unsafe fn update_uniformf(&self, uniform: &Uniform, value: f32){
+        for (program_name, program) in self.programs.iter() {
+            self.gl.UseProgram(*program);
+            if let Some(loc) = self.uniform_locations.get(program_name).unwrap().get(uniform) {
+                self.gl.Uniform1f(*loc, value);
             }
         }
     }
@@ -409,7 +433,7 @@ impl Renderer {
         unsafe {
             let total_size = self.scene.width() as usize * self.scene.height() as usize * mem::size_of::<PixelData>();
             let pixel_data = generate_pixel_data(&self.scene);
-            let light_data = generate_light_data(self.scene.width(),&pixel_data);
+            let light_data = generate_light_data(self.scene.width(), self.scene.height(), &pixel_data);
 
             let ubo_binding = self.bindings.get(&Bindings::LightList.get_id()).unwrap().to_owned().1;
             self.gl.BindBuffer(gl::UNIFORM_BUFFER, ubo_binding);
@@ -428,6 +452,13 @@ impl Renderer {
                 total_size,
             );
 
+            let time_elapsed = Instant::now().duration_since(self.start_time);
+            self.update_uniformi(&Uniform::RealTime, time_elapsed.as_millis() as i32);
+            // self.update_uniformf(&Uniform::TimeOfDay, time_elapsed.as_millis() as f32 / (24.0 * 60.0 * 60.0));
+            self.update_uniformf(&Uniform::TimeOfDay, (time_elapsed.as_millis() as f32 / (1000.0 * 24.0)).fract());
+            println!("time of day is now {:?}",(time_elapsed.as_millis() as f32 / (1000.0 * 24.0)).fract());
+            self.update_uniformi(&Uniform::SunMode, 0);
+
             // println!("the thing0 is {}",self.gl.GetError());
             // println!("the thing1 is {}",self.gl.GetError());
 
@@ -441,7 +472,13 @@ impl Renderer {
             self.gl.ClearTexImage(self.bindings.get(&Bindings::ComputeAccuB.get_id()).unwrap().1, 0, 0+gl::RED_INTEGER, 0+gl::UNSIGNED_INT, std::ptr::null());
             self.gl.UseProgram(*self.programs.get(&Program::ComputeRaytracing).unwrap());
             // self.gl.DispatchCompute(1,360,1);
+
             self.gl.DispatchCompute(128,1,1);
+            self.gl.MemoryBarrier(gl::SHADER_IMAGE_ACCESS_BARRIER_BIT);
+
+            self.update_uniformi(&Uniform::SunMode, 1);
+            self.gl.UseProgram(*self.programs.get(&Program::ComputeRaytracing).unwrap());
+            self.gl.DispatchCompute(2,1,1);
             self.gl.MemoryBarrier(gl::SHADER_IMAGE_ACCESS_BARRIER_BIT);
 
             self.gl.UseProgram(*self.programs.get(&Program::Accumulation).unwrap());

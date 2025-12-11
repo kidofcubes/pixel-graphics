@@ -56,7 +56,8 @@ void main() {
 
     // D. Calculate the final color for *this frame only*
     vec3 currentFrameColor = scenePixel.color.rgb * (currentFrameIllumination + emission);
-    currentFrameColor = currentFrameIllumination;
+//    currentFrameColor = currentFrameIllumination;
+    currentFrameColor = (scenePixel.color.rgb*0.5*scenePixel.color.a)+currentFrameIllumination;
 
 
     // --- 3. Accumulate with Previous Frame (Exponential Moving Average) ---
@@ -66,7 +67,8 @@ void main() {
     // Read the accumulated color (which is LDR/Gamma) from the previous frame's FBO texture
     vec4 previousFrameData = texelFetch(fb0tex, pos, 0);
     vec3 previousFrameLDR = previousFrameData.rgb;
-    float alpha = 0.01;
+//    float alpha = 0.01;
+    float alpha = 0.05;
     pixelColor = vec4(mix(previousFrameLDR,currentFrameColor,alpha), scenePixel.color.a);
 
 }

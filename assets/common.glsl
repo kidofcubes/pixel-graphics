@@ -39,8 +39,8 @@ struct PixelData {
 struct LightPoint {
     float x;
     float y;
-    float emissiveness;
-    float padding;
+    float padding_0;
+    float padding_1;
 };
 
 
@@ -208,7 +208,7 @@ float logfloat(uint x, vec2 range, int bits)
 
 
 //from https://www.shadertoy.com/view/lllXz4
-const float PI  = 3.14159265359;
+const float PI  = 3.14159265358979323846;
 const float PHI = 1.61803398875;
 
 #define M_PI 3.141592653
@@ -412,20 +412,6 @@ vec3 UNPACKVEC3(float x, vec2 range)
 
     return N*logfloat(unpack.y, range, 16);
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
