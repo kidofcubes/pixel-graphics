@@ -8,7 +8,7 @@ use glutin::config::GetGlConfig;
 use glutin::display::GetGlDisplay;
 use glutin::prelude::*;
 use half::f16;
-use crate::{gl, glutils, pack2f16, pack4u8};
+use crate::{gl, glutils};
 use crate::gl::types::{GLint, GLsizei, GLsizeiptr, GLuint};
 use image::{ImageReader, RgbaImage};
 use std::mem;
@@ -456,7 +456,7 @@ impl Renderer {
             self.update_uniformi(&Uniform::RealTime, time_elapsed.as_millis() as i32);
             // self.update_uniformf(&Uniform::TimeOfDay, time_elapsed.as_millis() as f32 / (24.0 * 60.0 * 60.0));
             self.update_uniformf(&Uniform::TimeOfDay, (time_elapsed.as_millis() as f32 / (1000.0 * 24.0)).fract());
-            println!("time of day is now {:?}",(time_elapsed.as_millis() as f32 / (1000.0 * 24.0)).fract());
+            // println!("time of day is now {:?}",(time_elapsed.as_millis() as f32 / (1000.0 * 24.0)).fract());
             self.update_uniformi(&Uniform::SunMode, 0);
 
             // println!("the thing0 is {}",self.gl.GetError());
@@ -478,7 +478,7 @@ impl Renderer {
 
             self.update_uniformi(&Uniform::SunMode, 1);
             self.gl.UseProgram(*self.programs.get(&Program::ComputeRaytracing).unwrap());
-            self.gl.DispatchCompute(2,1,1);
+            self.gl.DispatchCompute(32,1,1);
             self.gl.MemoryBarrier(gl::SHADER_IMAGE_ACCESS_BARRIER_BIT);
 
             self.gl.UseProgram(*self.programs.get(&Program::Accumulation).unwrap());

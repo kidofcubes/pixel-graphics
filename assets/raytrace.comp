@@ -92,11 +92,12 @@ void pathTracing(in vec2 initPos, in vec2 dir, vec3 currentLight, in float seed)
 
     ivec2 movingPos = ivec2(int(initPos.x),int(initPos.y));
     float dist = length(curPos-initPos);
-    PixelData currentPixel;
+    PixelData currentPixel = get_pixel(movingPos);
 
-    imageAtomicAdd(computeAccuR,movingPos,uint(currentLight.r * float(COMPUTE_MULTIPLIER_PORPORTION)));
-    imageAtomicAdd(computeAccuG,movingPos,uint(currentLight.g * float(COMPUTE_MULTIPLIER_PORPORTION)));
-    imageAtomicAdd(computeAccuB,movingPos,uint(currentLight.b * float(COMPUTE_MULTIPLIER_PORPORTION)));
+//    if(currentPixel.opac)
+//    imageAtomicAdd(computeAccuR,movingPos,uint(currentLight.r * float(COMPUTE_MULTIPLIER_PORPORTION)));
+//    imageAtomicAdd(computeAccuG,movingPos,uint(currentLight.g * float(COMPUTE_MULTIPLIER_PORPORTION)));
+//    imageAtomicAdd(computeAccuB,movingPos,uint(currentLight.b * float(COMPUTE_MULTIPLIER_PORPORTION)));
 
     float rngState = seed;
 
@@ -154,11 +155,15 @@ void pathTracing(in vec2 initPos, in vec2 dir, vec3 currentLight, in float seed)
             rngState = noise2(rngState,t); // Update RNG state
             float rollVolumetric = rngState;
 
-            if (rollVolumetric < 0.05 && sunMode==0) {
+            if ((rollVolumetric < 0.05 && sunMode==0)||(rollVolumetric < 0.025 && sunMode==1)) {
                 // If rolled true, change direction randomly (like a diffuse bounce)
 
                 // New random direction
-                float newRandomDir = sampleBiasedAngle(atan(dir.y,dir.x), 0.8, noise3(rngState, curPos.x, curPos.y));
+                float g = 0.8;
+                if(sunMode==1){
+                    g = 0.98;
+                }
+                float newRandomDir = sampleBiasedAngle(atan(dir.y,dir.x), g, noise3(rngState, curPos.x, curPos.y));
                 dir = vec2(cos(newRandomDir), sin(newRandomDir));
 
                 // Recalculate DDA steps for the new direction
@@ -256,6 +261,11 @@ void pathTracing(in ivec2 pos, in float seed){
     pathTracing(initPos, dir, currentLight, initSeed);
 }
 
+//todo normalize for how many rays are casted
+
+//todo normalize sunlight/moonlight for how dense the rays are
+
+//todo add auto exposure somehow (maybe split for seperate areas if thats possible?)
 
 
 void main(){
@@ -284,7 +294,7 @@ void main(){
         //    imageAtomicAdd(computeAccuR,ivec2(gl_GlobalInvocationID.xy),uint(0.1 * float(COMPUTE_MULTIPLIER)));
         //    imageAtomicAdd(computeAccuG,ivec2(gl_GlobalInvocationID.xy),uint(0.1 * float(COMPUTE_MULTIPLIER)));
         //    imageAtomicAdd(computeAccuB,ivec2(gl_GlobalInvocationID.xy),uint(0.1 * float(COMPUTE_MULTIPLIER)));
-//        pathTracing(pos, (float(seed)/100.0));
+        pathTracing(pos, (float(seed)/100.0));
         //    imageAtomicAdd(computeAccu,pos,uint(0.01 * float(COMPUTE_MULTIPLIER)))        ;
 
 
@@ -340,9 +350,11 @@ void main(){
 //        }
         vec3 currentLight;
         if(timeOfDay<0.5){
-            currentLight = vec3(1.0,0.9,0.6) * 5000.0;
+//            currentLight = vec3(1.0,0.9,0.6) * 5000.0;
+            currentLight = vec3(1.0,0.9,0.6) * 300.0;
         }else{
-            currentLight = vec3(0.7,0.7,0.8) * 250.0;
+//            currentLight = vec3(0.7,0.7,0.8) * 250.0;
+            currentLight = vec3(0.7,0.7,0.8) * 32.0;
         }
 
 //        initPos.x += noise3(initSeed,initPos.x,initPos.y);

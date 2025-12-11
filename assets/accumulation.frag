@@ -67,8 +67,7 @@ void main() {
     // Read the accumulated color (which is LDR/Gamma) from the previous frame's FBO texture
     vec4 previousFrameData = texelFetch(fb0tex, pos, 0);
     vec3 previousFrameLDR = previousFrameData.rgb;
-//    float alpha = 0.01;
-    float alpha = 0.05;
+    float alpha = 0.01;
     pixelColor = vec4(mix(previousFrameLDR,currentFrameColor,alpha), scenePixel.color.a);
 
 }

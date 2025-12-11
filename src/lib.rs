@@ -24,6 +24,7 @@ use glutin::surface::{Surface, SwapInterval, WindowSurface};
 
 use glutin_winit::{DisplayBuilder, GlWindow};
 use half::f16;
+use winit::dpi::PhysicalSize;
 use crate::gl::types::{GLenum, GLint};
 use crate::renderer::Renderer;
 
@@ -221,6 +222,7 @@ fn create_gl_context(window: &Window, gl_config: &Config) -> NotCurrentContext {
 pub fn window_attributes() -> WindowAttributes {
     Window::default_attributes()
         .with_transparent(true)
+        .with_inner_size(PhysicalSize::new(640, 360))
         .with_title("Glutin triangle gradient example (press Escape to exit)")
 }
 
