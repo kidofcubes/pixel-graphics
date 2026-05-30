@@ -546,6 +546,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "fastnoise-lite"
+version = "1.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3e5f3c3cc9081e5d0e18bcd50e80cd33cba47fc22f88a9da9c33ecd1c87ea5c0"
+dependencies = [
+ "num-traits",
+]
+
+[[package]]
 name = "fax"
 version = "0.2.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -670,6 +679,12 @@ dependencies = [
  "log",
  "xml-rs",
 ]
+
+[[package]]
+name = "glam"
+version = "0.33.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8fb167719045debebe9f532320accc7b5c993c5a3b813f5696a11d5ca7bdc57b"
 
 [[package]]
 name = "glutin"
@@ -1449,11 +1464,14 @@ version = "0.0.1"
 dependencies = [
  "cfg_aliases",
  "drm",
+ "fastnoise-lite",
  "gl_generator",
+ "glam",
  "glutin",
  "glutin-winit",
  "half",
  "image",
+ "num-traits",
  "png 0.17.16",
  "raw-window-handle",
  "winit",

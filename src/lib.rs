@@ -1,5 +1,6 @@
 mod renderer;
 mod glutils;
+mod scene;
 
 use std::error::Error;
 use std::ffi::{CStr, CString};
@@ -25,6 +26,7 @@ use glutin::surface::{Surface, SwapInterval, WindowSurface};
 use glutin_winit::{DisplayBuilder, GlWindow};
 use half::f16;
 use winit::dpi::PhysicalSize;
+use winit::platform::x11::WindowAttributesExtX11;
 use crate::gl::types::{GLenum, GLint};
 use crate::renderer::Renderer;
 
@@ -224,6 +226,7 @@ pub fn window_attributes() -> WindowAttributes {
         .with_transparent(true)
         .with_inner_size(PhysicalSize::new(640, 360))
         .with_title("Glutin triangle gradient example (press Escape to exit)")
+        .with_name("pixel-graphics", "pixel-graphics")
 }
 
 enum GlDisplayCreationState {

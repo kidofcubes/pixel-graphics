@@ -14,6 +14,7 @@ use image::{ImageReader, RgbaImage};
 use std::mem;
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 use crate::glutils::{create_texture, generate_light_data, generate_pixel_data, load_image};
+use crate::scene::get_scene_data;
 
 #[derive(Debug, Eq, PartialEq, Hash, Copy, Clone)]
 enum Bindings {
@@ -122,6 +123,13 @@ pub(crate) struct PixelData {
     pub padding_1: f32,
     pub padding_2: f32,
     pub padding_3: f32,
+}
+impl PixelData {
+    pub fn set_color(&mut self, vec: &glam::Vec3){
+        self.r = vec.x;
+        self.g = vec.y;
+        self.b = vec.z;
+    }
 }
 
 impl Renderer {
@@ -419,7 +427,7 @@ impl Renderer {
         self.frame=self.frame+1;
         let new_time = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_millis() as u64;
         let fps = 1000.0/((new_time-self.last_frame) as f64);
-        println!("fps is {:?}",fps);
+        println!("fps is {:?} frame is {:?}",fps, self.frame);
         self.last_frame=new_time;
     }
 
@@ -432,7 +440,9 @@ impl Renderer {
     ) {
         unsafe {
             let total_size = self.scene.width() as usize * self.scene.height() as usize * mem::size_of::<PixelData>();
-            let pixel_data = generate_pixel_data(&self.scene);
+
+            let pixel_data = get_scene_data(&self.scene, 0.0);
+
             let light_data = generate_light_data(self.scene.width(), self.scene.height(), &pixel_data);
 
             let ubo_binding = self.bindings.get(&Bindings::LightList.get_id()).unwrap().to_owned().1;

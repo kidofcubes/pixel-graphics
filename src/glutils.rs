@@ -102,19 +102,19 @@ pub fn generate_single_pixel(r: u8,g: u8,b: u8,a: u8) -> PixelData{
     if(a==128){
         pixel_data.emissiveness = 30.0;
         pixel_data.opacity = 1.0;
-        pixel_data.transmission = 10.0;
+        pixel_data.transmission = 1.0;
         // pixel_data.reflectiveness = 0.0;
         // pixel_data.r = 1.0;
         // pixel_data.g = 1.0;
         // pixel_data.b = 1.0;
         // pixel_data.transmission = 0.0;
     }else if(a==0){
-        pixel_data.opacity = 0.001;
-        pixel_data.transmission = 0.0;
+        pixel_data.opacity = 0.0;
+        pixel_data.transmission = 0.9995;
         pixel_data.reflectiveness = 0.0;
-        pixel_data.r = 1.0;
-        pixel_data.g = 1.0;
-        pixel_data.b = 1.0;
+        pixel_data.r = 0.1;
+        pixel_data.g = 0.1;
+        pixel_data.b = 0.15;
     }else{
         // pixel_data.transmission = 0.1;
         // pixel_data.reflectiveness= 0.99;

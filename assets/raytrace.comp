@@ -123,20 +123,22 @@ void pathTracing(in vec2 initPos, in vec2 dir, vec3 currentLight, in float seed)
         }
 
         curPos += dir*min(dtX, dtY);
+        float pixel_length = length(dir*min(dtX, dtY));
         currentPixel = get_pixel(movingPos);
 
         // A. Basic Density/Opacity Check
         // If the cell is effectively empty, the ray travels through the volume
         float opacity = currentPixel.color.a;
-        if(opacity < 0.01) {
+        if(opacity == 0.0) {
             // --- VOLUMETRIC SCATTERING (In-Scattering) ---
 
             // 1. Calculate scattered light (light made visible)
             // Energy scattered = Current Light * Density * Distance Traveled
-            float scatteringRate = 0.05;
+            // 2.0 because i want the air to be brighter
+            float scatteringRate = 1.0 * ((1.0-currentPixel.transmission) * pixel_length);
 
             // Apply a tint to the volume/air itself for effect (e.g., blueish/fog)
-            vec3 volumeColor = vec3(0.8, 0.8, 0.8) * 0.2;
+            vec3 volumeColor = currentPixel.color.rgb;
             vec3 scatteredLight = currentLight * scatteringRate * volumeColor;
             //            vec3 scatteredLight = min(currentLight,vec3(10.0,10.0,10.0)) * scatteringRate * volumeColor;
 
@@ -145,6 +147,9 @@ void pathTracing(in vec2 initPos, in vec2 dir, vec3 currentLight, in float seed)
             imageAtomicAdd(computeAccuR,movingPos,uint(scatteredLight.r * float(COMPUTE_MULTIPLIER_PORPORTION)));
             imageAtomicAdd(computeAccuG,movingPos,uint(scatteredLight.g * float(COMPUTE_MULTIPLIER_PORPORTION)));
             imageAtomicAdd(computeAccuB,movingPos,uint(scatteredLight.b * float(COMPUTE_MULTIPLIER_PORPORTION)));
+
+
+            currentLight *= 1.0-((1.0-currentPixel.transmission) * pixel_length);
 
             // 3. Apply Attenuation (Light loss from the ray)
             // The light remaining in the ray path must be reduced.
@@ -194,9 +199,9 @@ void pathTracing(in vec2 initPos, in vec2 dir, vec3 currentLight, in float seed)
         vec3 absorbedEnergy = currentLight * (1.0) * diffuseColor * opacity;
 
 
-        imageAtomicAdd(computeAccuR,movingPos,uint(absorbedEnergy.r * currentPixel.color.a * float(COMPUTE_MULTIPLIER_PORPORTION)));
-        imageAtomicAdd(computeAccuG,movingPos,uint(absorbedEnergy.g * currentPixel.color.a * float(COMPUTE_MULTIPLIER_PORPORTION)));
-        imageAtomicAdd(computeAccuB,movingPos,uint(absorbedEnergy.b * currentPixel.color.a * float(COMPUTE_MULTIPLIER_PORPORTION)));
+        imageAtomicAdd(computeAccuR,movingPos,uint(absorbedEnergy.r * pixel_length * float(COMPUTE_MULTIPLIER_PORPORTION)));
+        imageAtomicAdd(computeAccuG,movingPos,uint(absorbedEnergy.g * pixel_length * float(COMPUTE_MULTIPLIER_PORPORTION)));
+        imageAtomicAdd(computeAccuB,movingPos,uint(absorbedEnergy.b * pixel_length * float(COMPUTE_MULTIPLIER_PORPORTION)));
 
         rngState = noise2(rngState,t);
         float roll = rngState;
@@ -233,6 +238,7 @@ void pathTracing(in vec2 initPos, in vec2 dir, vec3 currentLight, in float seed)
             //            currentLight *= pow(normalize(currentPixel.color.rgb) * sqrt(3), vec3(opacity)) * 0.25;
             //            currentLight *= pow(normalize(currentPixel.color.rgb), vec3(opacity));
             // Keep 'dir' same for simple transmission.
+            currentLight *= 1.0-((1.0-currentPixel.transmission) * pixel_length);
 
         } else {
             // --- ABSORPTION (Ray Death) ---
@@ -247,7 +253,7 @@ void pathTracing(in vec2 initPos, in vec2 dir, vec3 currentLight, in float seed)
 
 //i generate the random dir
 void pathTracing(in ivec2 pos, in float seed){
-    float initSeed = noise2(float(frame),seed);
+    float initSeed = noise2(float(frame)/1000.0,seed);
     vec2 initPos = vec2(pos);
     initPos.x += noise3(initSeed,initPos.x,initPos.y);
     initPos.y += noise3(initSeed,initPos.x,initPos.y);
@@ -279,7 +285,7 @@ void main(){
 
 
 //    uint i = (gl_GlobalInvocationID.x + (gl_GlobalInvocationID.y * RESOLUTIONX))%lightCount;
-    uint seed = (gl_GlobalInvocationID.x + (gl_GlobalInvocationID.y * 512)) + frame;
+    uint seed = (gl_GlobalInvocationID.x + (gl_GlobalInvocationID.y * 512)) + (frame);
     uint i = seed%lightCount;
     if(sunMode == 0){
         ivec2 pos = ivec2(light_points[i].x, light_points[i].y);
@@ -301,7 +307,7 @@ void main(){
         //    pos = ivec2(0,0);
         //    imageAtomicAdd(computeAccu,pos,1u * COMPUTE_MULTIPLIER);
     }else{
-        float initSeed = noise2(float(frame),float(seed)/100.0);
+        float initSeed = noise2(float(frame)/1000.0,float(seed)/100.0);
         vec2 dir;
 //        vec2 initPos;
 
@@ -322,7 +328,7 @@ void main(){
         float minPerp = min(min(p0,p1),min(p2,p3));
         float maxPerp = max(max(p0,p1),max(p2,p3));
 
-        vec2 initPos = (perp*mix(minPerp, maxPerp, noise2(float(gl_GlobalInvocationID.x),float(frame))))-(dir*(sqrt(RESOLUTIONX*RESOLUTIONY)+10.0));
+        vec2 initPos = (perp*mix(minPerp, maxPerp, noise2(float(gl_GlobalInvocationID.x),float(frame)/1000.0)))-(dir*(sqrt(RESOLUTIONX*RESOLUTIONY)+10.0));
         float t0 = (initPos.y-(RESOLUTIONY-1)) / -dir.y;
         float t1;
         if(dir.x<0.0){ // shining in from the right
@@ -356,6 +362,7 @@ void main(){
 //            currentLight = vec3(0.7,0.7,0.8) * 250.0;
             currentLight = vec3(0.7,0.7,0.8) * 32.0;
         }
+        currentLight = vec3(1.0,0.9,0.6) * 300.0;
 
 //        initPos.x += noise3(initSeed,initPos.x,initPos.y);
 //        initPos.y += noise3(initSeed,initPos.x,initPos.y);
