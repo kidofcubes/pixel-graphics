@@ -1,9 +1,30 @@
 use fastnoise_lite::{FastNoiseLite, FractalType, NoiseType};
-use glam::{vec2, vec3, Vec2, Vec3};
+use glam::{vec3, Vec3};
 use image::RgbaImage;
 use crate::glutils::generate_pixel_data;
-use crate::renderer::PixelData;
 
+
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct PixelData {
+    pub r: f32,
+    pub g: f32,
+    pub b: f32,
+    pub density: f32,
+
+    pub transmission: f32,
+    pub emissiveness: f32,
+    pub reflectiveness: f32,
+    pub metallic: f32,
+
+    pub scattering: Vec3,
+    pub roughness: f32,
+
+    pub anisotropy: f32,
+    pub absorption: f32,
+    pub padding_0: f32, //ior later
+    pub padding_1: f32,
+}
 pub fn get_scene_data(scene_image: &RgbaImage, t: f32) -> Vec<PixelData>{
     let width = scene_image.width();
     let height = scene_image.height();
@@ -36,7 +57,7 @@ pub fn get_scene_data(scene_image: &RgbaImage, t: f32) -> Vec<PixelData>{
 
             // pixel.transmission=0.96;
             pixel.density=0.0+(normalized_post_cutoff/2.0);
-            pixel.scattering = 1.0;
+            pixel.scattering = vec3(1.0,1.0,1.0);
             pixel.set_color(&vec3(1.0,1.0,1.0));
         }
     }
@@ -53,5 +74,62 @@ impl EachMaxMin for Vec3 {
     }
     fn each_min(&self, rhs: f32) -> Self {
         return vec3(self.x.min(rhs),self.y.min(rhs),self.z.min(rhs));
+    }
+}
+
+pub fn generate_single_pixel(r: u8, g: u8, b: u8, a: u8) -> PixelData{
+    let mut pixel_data: PixelData = PixelData {
+        r: r as f32 / 255.,
+        g: g as f32 / 255.,
+        b: b as f32 / 255.,
+        density : 1.0,
+
+        transmission: 0.0,
+        // a: a as f32 / 255.,
+        emissiveness: 0.0,
+        reflectiveness: 0.0,
+        metallic: 0.0,
+
+        roughness: 0.8,
+        scattering: vec3(0.0,0.0,0.0),
+        anisotropy: 1.0,
+        absorption: 0.0,
+
+        padding_0: 0.0,
+        padding_1: 0.0,
+    };
+    if(a==128){
+        pixel_data.emissiveness = 30.0;
+        pixel_data.density = 1.0;
+        pixel_data.transmission = 1.0;
+        // pixel_data.reflectiveness = 0.0;
+        // pixel_data.r = 1.0;
+        // pixel_data.g = 1.0;
+        // pixel_data.b = 1.0;
+        // pixel_data.transmission = 0.0;
+    }else if(a==0){
+        pixel_data.density = 0.01;
+        pixel_data.transmission = 1.0;
+        pixel_data.reflectiveness = 0.0;
+        pixel_data.scattering = vec3(0.175, 0.41, 1.0);
+        pixel_data.r = 0.3;
+        pixel_data.g = 0.3;
+        pixel_data.b = 0.35;
+    }else{
+        // pixel_data.transmission = 0.1;
+        // pixel_data.reflectiveness= 0.99;
+        pixel_data.density = 1.0;
+        pixel_data.transmission = 0.6;
+        pixel_data.reflectiveness= 0.0;
+    }
+    return pixel_data;
+}
+
+
+impl PixelData {
+    pub fn set_color(&mut self, vec: &glam::Vec3){
+        self.r = vec.x;
+        self.g = vec.y;
+        self.b = vec.z;
     }
 }

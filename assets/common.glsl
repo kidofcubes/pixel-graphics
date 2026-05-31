@@ -32,15 +32,14 @@ struct PixelData {
     float metallic; // 0.0 - 1.0
 
 // Block 3 (16 bytes)
+    vec3 scattering;
     float roughness; // 0.0 - 1.0
-    float scattering;
+    
+//b4
     float anisotropy;
     float absorption;
-    
     float padding_0;
     float padding_1;
-    float padding_2;
-    float padding_3;
 };
 
 struct LightPoint {

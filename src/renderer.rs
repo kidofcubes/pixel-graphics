@@ -7,14 +7,13 @@ use gl::types::GLfloat;
 use glutin::config::GetGlConfig;
 use glutin::display::GetGlDisplay;
 use glutin::prelude::*;
-use half::f16;
 use crate::{gl, glutils};
-use crate::gl::types::{GLint, GLsizei, GLsizeiptr, GLuint};
-use image::{ImageReader, RgbaImage};
+use crate::gl::types::{GLint, GLsizeiptr, GLuint};
+use image::RgbaImage;
 use std::mem;
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
-use crate::glutils::{create_texture, generate_light_data, generate_pixel_data, load_image};
-use crate::scene::get_scene_data;
+use crate::glutils::{create_texture, generate_light_data, load_image};
+use crate::scene::{get_scene_data, PixelData};
 
 #[derive(Debug, Eq, PartialEq, Hash, Copy, Clone)]
 enum Bindings {
@@ -104,37 +103,6 @@ pub struct Renderer {
     start_time: Instant,
     scene: RgbaImage,
     scene_mapped_ptr: *mut c_void,
-}
-
-#[repr(C)]
-#[derive(Debug, Clone, Copy)]
-pub(crate) struct PixelData {
-    pub r: f32,
-    pub g: f32,
-    pub b: f32,
-    pub density: f32,
-
-    pub transmission: f32,
-    pub emissiveness: f32,
-    pub reflectiveness: f32,
-    pub metallic: f32,
-
-    pub roughness: f32,
-    pub scattering: f32,
-    pub anisotropy: f32,
-    pub absorption: f32,
-
-    pub padding_0: f32, //ior later
-    pub padding_1: f32,
-    pub padding_2: f32,
-    pub padding_3: f32,
-}
-impl PixelData {
-    pub fn set_color(&mut self, vec: &glam::Vec3){
-        self.r = vec.x;
-        self.g = vec.y;
-        self.b = vec.z;
-    }
 }
 
 impl Renderer {
