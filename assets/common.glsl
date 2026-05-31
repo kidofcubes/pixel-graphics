@@ -22,7 +22,8 @@ float linearFalloff = (1.0/
 
 struct PixelData {
 // Block 1 (16 bytes)
-    vec4 color;// r, g, b, opacity
+    vec3 color;// r, g, b
+    float density;
 
 // Block 2 (16 bytes)
     float transmission;
@@ -32,9 +33,14 @@ struct PixelData {
 
 // Block 3 (16 bytes)
     float roughness; // 0.0 - 1.0
+    float scattering;
+    float anisotropy;
+    float absorption;
+    
     float padding_0;
     float padding_1;
     float padding_2;
+    float padding_3;
 };
 
 struct LightPoint {

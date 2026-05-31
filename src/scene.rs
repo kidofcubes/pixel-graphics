@@ -16,18 +16,27 @@ pub fn get_scene_data(scene_image: &RgbaImage, t: f32) -> Vec<PixelData>{
     noise.set_fractal_gain(Some(0.5)); // "Gain" is another word for persistence
 
     for x in 0..width-0 {
-        for y in height-50..height-20 {
+        // for y in height-200..height-00 {
+        for y in 0..height-000 {
             let pixel = pixel_data.get_mut((x+(y*width)) as usize).unwrap();
-            // let fbm_value = (fbm(vec2(x as f32, y as f32)/50.0, 1.0) / (num_octaves as f32*2.0f32))+0.5;
-            let fbm_value = (noise.get_noise_2d(x as f32,y as f32)+1.0)/2.0;
-                // pixel_data[(x+(y*width)) as usize].transmission=0.985;
-            let cutoff = 0.5;
-            if(fbm_value<cutoff){
+            if(pixel.density>=1.0){
                 continue;
             }
+            // let fbm_value = (fbm(vec2(x as f32, y as f32)/50.0, 1.0) / (num_octaves as f32*2.0f32))+0.5;
+            let pos_mult: f32 = 1.5;
+            let fbm_value = (noise.get_noise_2d(x as f32 * pos_mult,y as f32 * pos_mult)+1.0)/2.0;
+                // pixel_data[(x+(y*width)) as usize].transmission=0.985;
+            let cutoff = 0.7;
+            if(fbm_value<cutoff){
+                continue;
+            }else{
+                // continue;
+            }
+            let normalized_post_cutoff = ((fbm_value-cutoff)/(1.0-cutoff));
 
             // pixel.transmission=0.96;
-            pixel.transmission=1.0-(fbm_value/100.0);
+            pixel.density=0.0+(normalized_post_cutoff/2.0);
+            pixel.scattering = 1.0;
             pixel.set_color(&vec3(1.0,1.0,1.0));
         }
     }

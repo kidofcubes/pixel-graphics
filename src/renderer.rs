@@ -112,7 +112,7 @@ pub(crate) struct PixelData {
     pub r: f32,
     pub g: f32,
     pub b: f32,
-    pub opacity: f32,
+    pub density: f32,
 
     pub transmission: f32,
     pub emissiveness: f32,
@@ -120,6 +120,11 @@ pub(crate) struct PixelData {
     pub metallic: f32,
 
     pub roughness: f32,
+    pub scattering: f32,
+    pub anisotropy: f32,
+    pub absorption: f32,
+
+    pub padding_0: f32, //ior later
     pub padding_1: f32,
     pub padding_2: f32,
     pub padding_3: f32,

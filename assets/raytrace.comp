@@ -128,18 +128,17 @@ void pathTracing(in vec2 initPos, in vec2 dir, vec3 currentLight, in float seed)
 
         // A. Basic Density/Opacity Check
         // If the cell is effectively empty, the ray travels through the volume
-        float opacity = currentPixel.color.a;
-        if(opacity == 0.0) {
+        if(currentPixel.density < 1.0) {
             // --- VOLUMETRIC SCATTERING (In-Scattering) ---
 
             // 1. Calculate scattered light (light made visible)
             // Energy scattered = Current Light * Density * Distance Traveled
             // 2.0 because i want the air to be brighter
-            float scatteringRate = 1.0 * ((1.0-currentPixel.transmission) * pixel_length);
+//            float scatteringRate = 1.0 * ((1.0-currentPixel.transmission) * pixel_length);
 
             // Apply a tint to the volume/air itself for effect (e.g., blueish/fog)
             vec3 volumeColor = currentPixel.color.rgb;
-            vec3 scatteredLight = currentLight * scatteringRate * volumeColor;
+            vec3 scatteredLight = currentLight * currentPixel.scattering * currentPixel.density * 1.0;
             //            vec3 scatteredLight = min(currentLight,vec3(10.0,10.0,10.0)) * scatteringRate * volumeColor;
 
             // 2. Deposit the scattered light into the accumulator
@@ -149,7 +148,10 @@ void pathTracing(in vec2 initPos, in vec2 dir, vec3 currentLight, in float seed)
             imageAtomicAdd(computeAccuB,movingPos,uint(scatteredLight.b * float(COMPUTE_MULTIPLIER_PORPORTION)));
 
 
-            currentLight *= 1.0-((1.0-currentPixel.transmission) * pixel_length);
+
+            currentLight *= exp(-(currentPixel.scattering + currentPixel.absorption) * currentPixel.density * pixel_length);
+//            currentLight *= 1.0-((1.0-currentPixel.transmission) * pixel_length);
+
 
             // 3. Apply Attenuation (Light loss from the ray)
             // The light remaining in the ray path must be reduced.
@@ -160,7 +162,8 @@ void pathTracing(in vec2 initPos, in vec2 dir, vec3 currentLight, in float seed)
             rngState = noise2(rngState,t); // Update RNG state
             float rollVolumetric = rngState;
 
-            if ((rollVolumetric < 0.05 && sunMode==0)||(rollVolumetric < 0.025 && sunMode==1)) {
+//            if ((rollVolumetric < 0.05 && sunMode==0)||(rollVolumetric < 0.025 && sunMode==1)) {
+            if (rollVolumetric < 0.5||(rollVolumetric < currentPixel.scattering * currentPixel.density * pixel_length)) {
                 // If rolled true, change direction randomly (like a diffuse bounce)
 
                 // New random direction
@@ -168,6 +171,7 @@ void pathTracing(in vec2 initPos, in vec2 dir, vec3 currentLight, in float seed)
                 if(sunMode==1){
                     g = 0.98;
                 }
+                g=0.8;
                 float newRandomDir = sampleBiasedAngle(atan(dir.y,dir.x), g, noise3(rngState, curPos.x, curPos.y));
                 dir = vec2(cos(newRandomDir), sin(newRandomDir));
 
@@ -196,7 +200,7 @@ void pathTracing(in vec2 initPos, in vec2 dir, vec3 currentLight, in float seed)
         vec3 diffuseColor = mix(currentPixel.color.rgb, vec3(0.0), currentPixel.metallic);
         //        vec3 absorbedEnergy = currentLight * (1.0 - reflChance - transChance) * diffuseColor * opacity;
         //        vec3 absorbedEnergy = currentLight * (1.0 - reflChance) * diffuseColor * opacity;
-        vec3 absorbedEnergy = currentLight * (1.0) * diffuseColor * opacity;
+        vec3 absorbedEnergy = currentLight * (1.0) * diffuseColor;
 
 
         imageAtomicAdd(computeAccuR,movingPos,uint(absorbedEnergy.r * pixel_length * float(COMPUTE_MULTIPLIER_PORPORTION)));
@@ -362,7 +366,7 @@ void main(){
 //            currentLight = vec3(0.7,0.7,0.8) * 250.0;
             currentLight = vec3(0.7,0.7,0.8) * 32.0;
         }
-        currentLight = vec3(1.0,0.9,0.6) * 300.0;
+        currentLight = vec3(1.0,0.9,0.6) * 3000.0;
 
 //        initPos.x += noise3(initSeed,initPos.x,initPos.y);
 //        initPos.y += noise3(initSeed,initPos.x,initPos.y);

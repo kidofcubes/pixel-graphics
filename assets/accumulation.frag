@@ -57,7 +57,8 @@ void main() {
     // D. Calculate the final color for *this frame only*
     vec3 currentFrameColor = scenePixel.color.rgb * (currentFrameIllumination + emission);
 //    currentFrameColor = currentFrameIllumination;
-    currentFrameColor = (scenePixel.color.rgb*0.5*scenePixel.color.a)+currentFrameIllumination;
+    //currentFrameColor = (scenePixel.color.rgb*0.5*scenePixel.color.a)+currentFrameIllumination;
+    currentFrameColor = (scenePixel.color.rgb*0.5)+currentFrameIllumination;
 
 
     // --- 3. Accumulate with Previous Frame (Exponential Moving Average) ---
@@ -70,6 +71,6 @@ void main() {
 //    float alpha = 0.01;
 //    float alpha = 1.0;
     float alpha = 0.1;
-    pixelColor = vec4(mix(previousFrameLDR,currentFrameColor,alpha), scenePixel.color.a);
+    pixelColor = vec4(mix(previousFrameLDR,currentFrameColor,alpha), 1.0);
 
 }
