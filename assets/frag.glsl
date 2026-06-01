@@ -34,6 +34,7 @@ void main() {
 //    uvec4 light_value = texelFetch(computeAccu, pos, 0);
     vec4 value = texture(fb0tex, texcoords.xy, 0);
     color_data = value;
+//    color_data = pow(value,vec4(1.0 / 2.2));
 //    color_data.rgb = vec3(float(value.x)/100.0);
 //    color_data.r = 0.1;
 //    color_data.g = 0.1;

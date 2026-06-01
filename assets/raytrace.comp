@@ -167,11 +167,12 @@ void pathTracing(in vec2 initPos, in vec2 dir, vec3 currentLight, in float seed)
 
             // 4. Check for Re-scatter (Ray Bounce in Air)
             rngState = noise2(rngState,t); // Update RNG state
-            float rollVolumetric = rngState;
+            float rollVolumetric = fract(rngState);
 
 //            if ((rollVolumetric < 0.05 && sunMode==0)||(rollVolumetric < 0.025 && sunMode==1)) {
 //            if (rollVolumetric < -100||(rollVolumetric < length(currentPixel.scattering) * currentPixel.density * pixel_length)) {
-            if (rollVolumetric < -100) {
+            if (rollVolumetric < max(currentPixel.scattering.x,max(currentPixel.scattering.y,currentPixel.scattering.z)) * currentPixel.density * pixel_length) {
+//            if (rollVolumetric < -100) {
                 // If rolled true, change direction randomly (like a diffuse bounce)
 
                 // New random direction
@@ -179,7 +180,8 @@ void pathTracing(in vec2 initPos, in vec2 dir, vec3 currentLight, in float seed)
                 if(sunMode==1){
                     g = 0.98;
                 }
-                g=0.8;
+                g=0.75;
+//                g=1.0;
                 float newRandomDir = sampleBiasedAngle(atan(dir.y,dir.x), g, noise3(rngState, curPos.x, curPos.y));
                 dir = vec2(cos(newRandomDir), sin(newRandomDir));
 
@@ -374,7 +376,7 @@ void main(){
 //            currentLight = vec3(0.7,0.7,0.8) * 250.0;
             currentLight = vec3(0.7,0.7,0.8) * 32.0;
         }
-        currentLight = vec3(1.0,0.9,0.6) * 3000.0;
+        currentLight = vec3(1.0,0.9,0.6) * 300.0;
 
 //        initPos.x += noise3(initSeed,initPos.x,initPos.y);
 //        initPos.y += noise3(initSeed,initPos.x,initPos.y);
