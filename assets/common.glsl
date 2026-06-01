@@ -36,10 +36,8 @@ struct PixelData {
     float roughness; // 0.0 - 1.0
     
 //b4
+    vec3 absorption;
     float anisotropy;
-    float absorption;
-    float padding_0;
-    float padding_1;
 };
 
 struct LightPoint {

@@ -129,6 +129,9 @@ void pathTracing(in vec2 initPos, in vec2 dir, vec3 currentLight, in float seed)
         // A. Basic Density/Opacity Check
         // If the cell is effectively empty, the ray travels through the volume
         if(currentPixel.density < 1.0) {
+            if(currentPixel.density==0.0){
+                continue;
+            }
             // --- VOLUMETRIC SCATTERING (In-Scattering) ---
 
             // 1. Calculate scattered light (light made visible)
@@ -139,7 +142,8 @@ void pathTracing(in vec2 initPos, in vec2 dir, vec3 currentLight, in float seed)
             // Apply a tint to the volume/air itself for effect (e.g., blueish/fog)
             vec3 volumeColor = currentPixel.color.rgb;
             float phase = 1.0;
-            vec3 scatteredLight = currentLight * currentPixel.scattering * currentPixel.density * phase;
+//            vec3 scatteredLight = currentLight * currentPixel.scattering * (max(currentPixel.density,0.05)) * phase;
+            vec3 scatteredLight = currentLight * currentPixel.scattering * (max(currentPixel.density,0.00)) * phase;
             //            vec3 scatteredLight = min(currentLight,vec3(10.0,10.0,10.0)) * scatteringRate * volumeColor;
 
             // 2. Deposit the scattered light into the accumulator
@@ -150,9 +154,9 @@ void pathTracing(in vec2 initPos, in vec2 dir, vec3 currentLight, in float seed)
 
 
 
-            currentLight.r *= exp(-(currentPixel.scattering.r + currentPixel.absorption) * currentPixel.density * pixel_length);
-            currentLight.g *= exp(-(currentPixel.scattering.g + currentPixel.absorption) * currentPixel.density * pixel_length);
-            currentLight.b *= exp(-(currentPixel.scattering.b + currentPixel.absorption) * currentPixel.density * pixel_length);
+            currentLight.r *= exp(-(currentPixel.scattering.r + currentPixel.absorption.r) * currentPixel.density * pixel_length);
+            currentLight.g *= exp(-(currentPixel.scattering.g + currentPixel.absorption.g) * currentPixel.density * pixel_length);
+            currentLight.b *= exp(-(currentPixel.scattering.b + currentPixel.absorption.b) * currentPixel.density * pixel_length);
 //            currentLight *= 1.0-((1.0-currentPixel.transmission) * pixel_length);
 
 
@@ -166,7 +170,8 @@ void pathTracing(in vec2 initPos, in vec2 dir, vec3 currentLight, in float seed)
             float rollVolumetric = rngState;
 
 //            if ((rollVolumetric < 0.05 && sunMode==0)||(rollVolumetric < 0.025 && sunMode==1)) {
-            if (rollVolumetric < 0.5||(rollVolumetric < length(currentPixel.scattering) * currentPixel.density * pixel_length)) {
+//            if (rollVolumetric < -100||(rollVolumetric < length(currentPixel.scattering) * currentPixel.density * pixel_length)) {
+            if (rollVolumetric < -100) {
                 // If rolled true, change direction randomly (like a diffuse bounce)
 
                 // New random direction
@@ -369,7 +374,7 @@ void main(){
 //            currentLight = vec3(0.7,0.7,0.8) * 250.0;
             currentLight = vec3(0.7,0.7,0.8) * 32.0;
         }
-        currentLight = vec3(1.0,0.9,0.6) * 300.0;
+        currentLight = vec3(1.0,0.9,0.6) * 3000.0;
 
 //        initPos.x += noise3(initSeed,initPos.x,initPos.y);
 //        initPos.y += noise3(initSeed,initPos.x,initPos.y);

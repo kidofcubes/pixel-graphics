@@ -1,5 +1,5 @@
 use fastnoise_lite::{FastNoiseLite, FractalType, NoiseType};
-use glam::{vec3, Vec3};
+use glam::{vec3, FloatExt, Vec3};
 use image::RgbaImage;
 use crate::glutils::generate_pixel_data;
 
@@ -20,10 +20,8 @@ pub(crate) struct PixelData {
     pub scattering: Vec3,
     pub roughness: f32,
 
+    pub absorption: Vec3,
     pub anisotropy: f32,
-    pub absorption: f32,
-    pub padding_0: f32, //ior later
-    pub padding_1: f32,
 }
 pub fn get_scene_data(scene_image: &RgbaImage, t: f32) -> Vec<PixelData>{
     let width = scene_image.width();
@@ -37,15 +35,18 @@ pub fn get_scene_data(scene_image: &RgbaImage, t: f32) -> Vec<PixelData>{
     noise.set_fractal_gain(Some(0.5)); // "Gain" is another word for persistence
 
     for x in 0..width-0 {
-        // for y in height-200..height-00 {
-        for y in 0..height-000 {
+        for y in height-000..height-00 {
+        // for y in 0..height-000 {
             let pixel = pixel_data.get_mut((x+(y*width)) as usize).unwrap();
             if(pixel.density>=1.0){
                 continue;
             }
             // let fbm_value = (fbm(vec2(x as f32, y as f32)/50.0, 1.0) / (num_octaves as f32*2.0f32))+0.5;
             let pos_mult: f32 = 1.5;
-            let fbm_value = (noise.get_noise_2d(x as f32 * pos_mult,y as f32 * pos_mult)+1.0)/2.0;
+            // let fbm_value = (noise.get_noise_2d(x as f32 * pos_mult,y as f32 * pos_mult)+1.0)/2.0;
+            // let x_mult = f32::lerp(1.0,2.0,(height-y) as f32/100.0);
+            let x_mult = 1.0;
+            let fbm_value = (noise.get_noise_2d((x as f32 * x_mult) * pos_mult,y as f32 * pos_mult)+1.0)/2.0;
                 // pixel_data[(x+(y*width)) as usize].transmission=0.985;
             let cutoff = 0.7;
             if(fbm_value<cutoff){
@@ -92,11 +93,9 @@ pub fn generate_single_pixel(r: u8, g: u8, b: u8, a: u8) -> PixelData{
 
         roughness: 0.8,
         scattering: vec3(0.0,0.0,0.0),
-        anisotropy: 1.0,
-        absorption: 0.0,
 
-        padding_0: 0.0,
-        padding_1: 0.0,
+        anisotropy: 1.0,
+        absorption: vec3(0.0,0.0,0.0),
     };
     if(a==128){
         pixel_data.emissiveness = 30.0;
