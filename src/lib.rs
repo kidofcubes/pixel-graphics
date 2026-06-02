@@ -100,6 +100,7 @@ impl ApplicationHandler for App {
         // Try setting vsync.
         if let Err(res) = gl_surface
             .set_swap_interval(gl_context, SwapInterval::Wait(NonZeroU32::new(1).unwrap()))
+            // .set_swap_interval(gl_context, SwapInterval::DontWait)
         {
             eprintln!("Error setting vsync: {res:?}");
         }
@@ -129,6 +130,9 @@ impl ApplicationHandler for App {
         event: WindowEvent,
     ) {
         match event {
+            WindowEvent::RedrawRequested => {
+                
+            },
             WindowEvent::Resized(size) if size.width != 0 && size.height != 0 => {
                 // Some platforms like EGL require resizing GL surface to update the size
                 // Notable platforms here are Wayland and macOS, other don't require it

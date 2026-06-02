@@ -23,7 +23,7 @@ layout (r32ui, binding = 2) uniform uimage2D computeAccuB;
 #define FLT_MIN 1.175494351e-38
 
 
-layout (std430) buffer scene
+layout (std430) readonly restrict buffer scene
 {
 // We group the 12 floats into an array of vec4s for clearer alignment.
 // NOTE: The struct below must perfectly match the Rust struct's memory layout (48 bytes)

@@ -103,6 +103,8 @@ pub struct Renderer {
     start_time: Instant,
     scene: RgbaImage,
     scene_mapped_ptr: *mut c_void,
+    pixel_data: Vec<PixelData>,
+    light_data: Vec<LightPoint>,
 }
 
 impl Renderer {
@@ -159,6 +161,7 @@ impl Renderer {
 
 
             let scene = load_image(Path::new("assets/scene640x360test.png"));
+            // let scene = load_image(Path::new("assets/blank3840x2160.png"));
             let width = scene.width();
             let height = scene.height();
             // println!("count1 and 2 {} {}",count1, count2);
@@ -348,6 +351,10 @@ impl Renderer {
 
             println!("the original3 is {}",gl.GetError());
 
+            let pixel_data = get_scene_data(&scene, 0.0);
+
+            let light_data = generate_light_data(scene.width(), scene.height(), &pixel_data);
+
             Self {
                 programs,
                 uniform_locations,
@@ -359,7 +366,9 @@ impl Renderer {
                 last_frame: 0,
                 start_time: Instant::now(),
                 scene,
-                scene_mapped_ptr
+                scene_mapped_ptr,
+                pixel_data,
+                light_data
             }
             // Self { program, gl }
         }
@@ -414,26 +423,24 @@ impl Renderer {
         unsafe {
             let total_size = self.scene.width() as usize * self.scene.height() as usize * mem::size_of::<PixelData>();
 
-            let pixel_data = get_scene_data(&self.scene, 0.0);
-
-            let light_data = generate_light_data(self.scene.width(), self.scene.height(), &pixel_data);
-
             let ubo_binding = self.bindings.get(&Bindings::LightList.get_id()).unwrap().to_owned().1;
             self.gl.BindBuffer(gl::UNIFORM_BUFFER, ubo_binding);
             // self.gl.BufferSubData(gl::UNIFORM_BUFFER, 0, (light_data.len() * mem::size_of::<LightPoint>()) as GLsizeiptr, light_data.as_ptr() as *const c_void);
-            self.gl.BufferData(gl::UNIFORM_BUFFER, (light_data.len() * mem::size_of::<LightPoint>()) as GLsizeiptr, light_data.as_ptr() as *const c_void, gl::DYNAMIC_DRAW);
+            self.gl.BufferData(gl::UNIFORM_BUFFER, (self.light_data.len() * mem::size_of::<LightPoint>()) as GLsizeiptr, self.light_data.as_ptr() as *const c_void, gl::DYNAMIC_DRAW);
             self.gl.BindBuffer(gl::UNIFORM_BUFFER, 0);
 
-            self.update_uniforms(light_data.len() as u32);
+            self.update_uniforms(self.light_data.len() as u32);
             // println!("lightdata len is {:?}",light_data.len());
 
 
             // Copy the new Rust data directly into the mapped GPU memory pointer
-            std::ptr::copy_nonoverlapping(
-                pixel_data.as_ptr() as *const c_void,
-                self.scene_mapped_ptr,
-                total_size,
-            );
+            if(self.frame%100==0) {
+                std::ptr::copy_nonoverlapping(
+                    self.pixel_data.as_ptr() as *const c_void,
+                    self.scene_mapped_ptr,
+                    total_size,
+                );
+            }
 
             let time_elapsed = Instant::now().duration_since(self.start_time);
             self.update_uniformi(&Uniform::RealTime, time_elapsed.as_millis() as i32);
