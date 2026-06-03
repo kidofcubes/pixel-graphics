@@ -19,9 +19,6 @@ layout (r32ui, binding = 1) uniform uimage2D computeAccuG;
 layout (r32ui, binding = 2) uniform uimage2D computeAccuB;
 //layout (rgba32f, binding = 0) uniform image2D computeAccu; // integer hit count
 
-#define FLT_MAX 3.402823466e+38
-#define FLT_MIN 1.175494351e-38
-
 
 layout (std430) readonly restrict buffer scene
 {
@@ -34,13 +31,6 @@ PixelData get_pixel(ivec2 pos){
     return scene_pixels[pos.x+(pos.y*RESOLUTIONX)];
 }
 
-// --- Helper: 2D Rotation ---
-vec2 rotate2d(vec2 v, float a) {
-    float s = sin(a);
-    float c = cos(a);
-    return vec2(v.x * c - v.y * s, v.x * s + v.y * c);
-}
-
 // GLSL side UBO definition
 layout(std140) uniform lightList { // Choose an available binding index
     LightPoint light_points[MAX_LIGHTS]; // MAX_LIGHTS must match the array size reserved on GPU
@@ -51,26 +41,7 @@ uniform int lightCount; // Standard uniform to tell the shader how many lights a
 #define COMPUTE_MULTIPLIER_PORPORTION (float(COMPUTE_MULTIPLIER) / float(lightCount))
 
 
-// NEW: Function to generate a biased random angle (Simplified 2D HG-like sampling)
-float sampleBiasedAngle(float currentAngle, float g, float rngValue) {
-    // This is a simplified, non-physically-based bias, but it demonstrates the concept
-    // of making the new angle dependent on the old angle and the anisotropy (g).
-
-    // Convert random value (0 to 1) to a scatter angle (-PI to PI)
-    float uniformScatterAngle = (rngValue - 0.5) * 2.0 * PI;
-
-    // Mix the uniform angle with 0.0 (perfect forward) based on the anisotropy 'g'.
-    // A small 'g' means mostly uniform; a large 'g' means mostly forward.
-    float biasedScatterAngle = mix(uniformScatterAngle, 0.0, abs(g));
-
-    // Combine with the current angle
-    return currentAngle + biasedScatterAngle;
-}
-
-
-
-void pathTracing(in vec2 initPos, in vec2 dir, vec3 currentLight, in float seed){
-
+void pathTracing(in Ray ray, in float seed){
 
 
     // -1 to compensate for 1-indexed tile coordinates
@@ -80,7 +51,7 @@ void pathTracing(in vec2 initPos, in vec2 dir, vec3 currentLight, in float seed)
     int stepX = dir.x > 0.0 ? 1 : -1;
     int stepY = dir.y > 0.0 ? 1 : -1;
 
-    vec2 curPos = initPos;
+    vec2 curPos = ray.position;
     float t = 0.0;
 
     if(dir.x==0.0){
@@ -91,13 +62,7 @@ void pathTracing(in vec2 initPos, in vec2 dir, vec3 currentLight, in float seed)
     }
 
     ivec2 movingPos = ivec2(int(initPos.x),int(initPos.y));
-    float dist = length(curPos-initPos);
     PixelData currentPixel = get_pixel(movingPos);
-
-//    if(currentPixel.opac)
-//    imageAtomicAdd(computeAccuR,movingPos,uint(currentLight.r * float(COMPUTE_MULTIPLIER_PORPORTION)));
-//    imageAtomicAdd(computeAccuG,movingPos,uint(currentLight.g * float(COMPUTE_MULTIPLIER_PORPORTION)));
-//    imageAtomicAdd(computeAccuB,movingPos,uint(currentLight.b * float(COMPUTE_MULTIPLIER_PORPORTION)));
 
     float rngState = seed;
 
@@ -134,20 +99,11 @@ void pathTracing(in vec2 initPos, in vec2 dir, vec3 currentLight, in float seed)
             }
             // --- VOLUMETRIC SCATTERING (In-Scattering) ---
 
-            // 1. Calculate scattered light (light made visible)
-            // Energy scattered = Current Light * Density * Distance Traveled
-            // 2.0 because i want the air to be brighter
-//            float scatteringRate = 1.0 * ((1.0-currentPixel.transmission) * pixel_length);
-
-            // Apply a tint to the volume/air itself for effect (e.g., blueish/fog)
             vec3 volumeColor = currentPixel.color.rgb;
             float phase = 1.0;
-//            vec3 scatteredLight = currentLight * currentPixel.scattering * (max(currentPixel.density,0.05)) * phase;
             vec3 scatteredLight = currentLight * currentPixel.scattering * (max(currentPixel.density,0.00)) * phase;
             //            vec3 scatteredLight = min(currentLight,vec3(10.0,10.0,10.0)) * scatteringRate * volumeColor;
 
-            // 2. Deposit the scattered light into the accumulator
-            // This is the core step that makes the ray visible in the grid cell.
             imageAtomicAdd(computeAccuR,movingPos,uint(scatteredLight.r * float(COMPUTE_MULTIPLIER_PORPORTION)));
             imageAtomicAdd(computeAccuG,movingPos,uint(scatteredLight.g * float(COMPUTE_MULTIPLIER_PORPORTION)));
             imageAtomicAdd(computeAccuB,movingPos,uint(scatteredLight.b * float(COMPUTE_MULTIPLIER_PORPORTION)));
@@ -157,8 +113,6 @@ void pathTracing(in vec2 initPos, in vec2 dir, vec3 currentLight, in float seed)
             currentLight.r *= exp(-(currentPixel.scattering.r + currentPixel.absorption.r) * currentPixel.density * pixel_length);
             currentLight.g *= exp(-(currentPixel.scattering.g + currentPixel.absorption.g) * currentPixel.density * pixel_length);
             currentLight.b *= exp(-(currentPixel.scattering.b + currentPixel.absorption.b) * currentPixel.density * pixel_length);
-//            currentLight *= 1.0-((1.0-currentPixel.transmission) * pixel_length);
-
 
             // 3. Apply Attenuation (Light loss from the ray)
             // The light remaining in the ray path must be reduced.
@@ -199,7 +153,7 @@ void pathTracing(in vec2 initPos, in vec2 dir, vec3 currentLight, in float seed)
         }
 
         vec2 normal = vec2(0.0);
-        if(side == 0) normal = vec2(-float(stepX), 0.0);
+        if(dtX < dtY) normal = vec2(-float(stepX), 0.0);
         else          normal = vec2(0.0, -float(stepY));
 
 

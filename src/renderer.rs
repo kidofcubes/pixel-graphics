@@ -405,12 +405,14 @@ impl Renderer {
     }
 
     pub fn draw(&mut self) {
-        self.draw_with_clear_color(0.0, 0.0, 0.0, 0.7);
-        self.frame=self.frame+1;
         let new_time = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_millis() as u64;
         let fps = 1000.0/((new_time-self.last_frame) as f64);
         println!("fps is {:?} frame is {:?}",fps, self.frame);
         self.last_frame=new_time;
+        if(fps <= 120.0){
+            self.draw_with_clear_color(0.0, 0.0, 0.0, 0.7);
+            self.frame=self.frame+1;
+        }
     }
 
     pub fn draw_with_clear_color(

@@ -21,6 +21,8 @@ float linearFalloff = (1.0/
 
 #define MAX_LIGHTS 1024
 
+#define FLT_MAX 3.402823466e+38
+#define FLT_MIN 1.175494351e-38
 
 struct PixelData {
 // Block 1 (16 bytes)
@@ -49,6 +51,13 @@ struct LightPoint {
     float padding_1;
 };
 
+struct Ray {
+    vec2 position;
+    vec2 direction;
+
+    vec3 energy;
+    float tile_id;
+};
 
 float lightIntensity(in float dist){
     return
@@ -420,6 +429,30 @@ vec3 UNPACKVEC3(float x, vec2 range)
 }
 
 
+
+// NEW: Function to generate a biased random angle (Simplified 2D HG-like sampling)
+float sampleBiasedAngle(float currentAngle, float g, float rngValue) {
+    // This is a simplified, non-physically-based bias, but it demonstrates the concept
+    // of making the new angle dependent on the old angle and the anisotropy (g).
+
+    // Convert random value (0 to 1) to a scatter angle (-PI to PI)
+    float uniformScatterAngle = (rngValue - 0.5) * 2.0 * PI;
+
+    // Mix the uniform angle with 0.0 (perfect forward) based on the anisotropy 'g'.
+    // A small 'g' means mostly uniform; a large 'g' means mostly forward.
+    float biasedScatterAngle = mix(uniformScatterAngle, 0.0, abs(g));
+
+    // Combine with the current angle
+    return currentAngle + biasedScatterAngle;
+}
+
+
+// --- Helper: 2D Rotation ---
+vec2 rotate2d(vec2 v, float a) {
+    float s = sin(a);
+    float c = cos(a);
+    return vec2(v.x * c - v.y * s, v.x * s + v.y * c);
+}
 
 
 
