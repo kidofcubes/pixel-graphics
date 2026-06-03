@@ -434,13 +434,13 @@ impl Renderer {
 
 
             // Copy the new Rust data directly into the mapped GPU memory pointer
-            if(self.frame%100==0) {
+            // if(self.frame%10==0) {
                 std::ptr::copy_nonoverlapping(
                     self.pixel_data.as_ptr() as *const c_void,
                     self.scene_mapped_ptr,
                     total_size,
                 );
-            }
+            // }
 
             let time_elapsed = Instant::now().duration_since(self.start_time);
             self.update_uniformi(&Uniform::RealTime, time_elapsed.as_millis() as i32);
@@ -463,12 +463,12 @@ impl Renderer {
             self.gl.UseProgram(*self.programs.get(&Program::ComputeRaytracing).unwrap());
             // self.gl.DispatchCompute(1,360,1);
 
-            self.gl.DispatchCompute(128,1,1);
+            self.gl.DispatchCompute(32,1,1);
             self.gl.MemoryBarrier(gl::SHADER_IMAGE_ACCESS_BARRIER_BIT);
 
             self.update_uniformi(&Uniform::SunMode, 1);
             self.gl.UseProgram(*self.programs.get(&Program::ComputeRaytracing).unwrap());
-            self.gl.DispatchCompute(32,1,1);
+            self.gl.DispatchCompute(128,1,1);
             self.gl.MemoryBarrier(gl::SHADER_IMAGE_ACCESS_BARRIER_BIT);
 
             self.gl.UseProgram(*self.programs.get(&Program::Accumulation).unwrap());
