@@ -593,12 +593,12 @@ impl Renderer {
         self.gl.BindBuffer(gl::SHADER_STORAGE_BUFFER, 0);
     }
 
-    /// Set a `uint` uniform on the currently-active program.
+    /// Set a `uint` uniform on `program` without binding it (DSA).
     unsafe fn set_uniform_u(&self, program: GLuint, name: &str, value: u32) {
         let cname = CString::new(name).unwrap();
         let loc = self.gl.GetUniformLocation(program, cname.as_ptr());
         if loc != -1 {
-            self.gl.Uniform1ui(loc, value);
+            self.gl.ProgramUniform1ui(program, loc, value);
         }
     }
 
@@ -623,12 +623,13 @@ impl Renderer {
         self.gl.MemoryBarrier(gl::BUFFER_UPDATE_BARRIER_BIT | gl::SHADER_STORAGE_BARRIER_BIT);
 
         let raygen_prog = *self.programs.get(&Program::RayGenerator).unwrap();
-        self.gl.UseProgram(raygen_prog);
 
-        // Emissive rays (sunMode = 0).
+        // Emissive rays (sunMode = 0). update_uniformi loops and clobbers the active
+        // program, so re-UseProgram immediately before dispatch.
         self.update_uniformi(&Uniform::SunMode, 0);
         let emissive_rays = RAYS_PER_FRAME as u32;
         self.set_uniform_u(raygen_prog, "raysToEmit", emissive_rays);
+        self.gl.UseProgram(raygen_prog);
         let wgs = (emissive_rays + 255) / 256;
         self.gl.DispatchCompute(wgs, 1, 1);
 
@@ -636,6 +637,7 @@ impl Renderer {
         self.update_uniformi(&Uniform::SunMode, 1);
         let sun_rays = SUN_RAYS_PER_FRAME as u32;
         self.set_uniform_u(raygen_prog, "raysToEmit", sun_rays);
+        self.gl.UseProgram(raygen_prog);
         let wgs = (sun_rays + 255) / 256;
         self.gl.DispatchCompute(wgs, 1, 1);
 

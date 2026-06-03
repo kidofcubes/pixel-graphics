@@ -98,7 +98,7 @@ void march_ray(in Ray ray, int tile_x0, int tile_y0) {
 
         if (px.density < 1.0) {
             if (px.density == 0.0) continue;
-            vec3 scattered = energy * px.scattering * px.density;
+            vec3 scattered = energy * px.scattering * max(px.density,0.0);
             atomicAdd(accum_r[local_idx], uint(scattered.r * COMPUTE_MULTIPLIER_PORPORTION));
             atomicAdd(accum_g[local_idx], uint(scattered.g * COMPUTE_MULTIPLIER_PORPORTION));
             atomicAdd(accum_b[local_idx], uint(scattered.b * COMPUTE_MULTIPLIER_PORPORTION));

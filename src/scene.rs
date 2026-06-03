@@ -21,7 +21,7 @@ pub(crate) struct PixelData {
     pub absorption: Vec3,
     pub anisotropy: f32,
 }
-const AIR_SCATTERING_MULT: f32 = 0.03;
+const AIR_SCATTERING_MULT: f32 = 1.0;
 const AIR_SCATTERING: Vec3 = vec3(
     0.175 * AIR_SCATTERING_MULT,
     0.41 * AIR_SCATTERING_MULT,
@@ -120,12 +120,12 @@ pub fn get_scene_data(scene_image: &RgbaImage, t: f32) -> Vec<PixelData>{
                 // pixel_data[(x+(y*width)) as usize].transmission=0.985;
             let cutoff = 0.5;
             if(fbm_value<cutoff){
-                // continue;
+                continue;
             }else{
                 // continue;
             }
             let mut normalized_post_cutoff = ((fbm_value-cutoff)/(1.0-cutoff));
-            normalized_post_cutoff = sample_cloud_density1(vec2(x as f32,y as f32), 0.25, 8.0, &fbm_noise, &worley_noise, 0.4);
+            // normalized_post_cutoff = sample_cloud_density1(vec2(x as f32,y as f32), 0.25, 8.0, &fbm_noise, &worley_noise, 0.4);
             // let mut normalized_post_cutoff = remap_density(fbm_value, cutoff, 3.0);
             // normalized_post_cutoff = (normalized_post_cutoff * 16.0).round()/16.0;
 
@@ -180,7 +180,7 @@ pub fn generate_single_pixel(r: u8, g: u8, b: u8, a: u8) -> PixelData{
         // pixel_data.b = 1.0;
         // pixel_data.transmission = 0.0;
     }else if(a==0){
-        pixel_data.density = 0.00;
+        pixel_data.density = 0.01;
         pixel_data.transmission = 1.0;
         pixel_data.reflectiveness = 0.0;
         pixel_data.scattering = AIR_SCATTERING;
