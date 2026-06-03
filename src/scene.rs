@@ -85,9 +85,9 @@ pub fn get_scene_data(scene_image: &RgbaImage, t: f32) -> Vec<PixelData>{
     let width = scene_image.width();
     let height = scene_image.height();
     println!("width {:?} height {:?}",width,height);
-    // let mut pixel_data = generate_pixel_data(scene_image);
+    let mut pixel_data = generate_pixel_data(scene_image);
     // let mut pixel_data = Vec::with_capacity((width*height) as usize);
-    let mut pixel_data = vec![generate_single_pixel(0,0,0,0); (width*height) as usize];
+    // let mut pixel_data = vec![generate_single_pixel(0,0,0,0); (width*height) as usize];
     // pixel_data.fill();
     let mut fbm_noise = FastNoiseLite::with_seed(0);
     fbm_noise.set_noise_type(Some(NoiseType::Perlin));
@@ -105,8 +105,8 @@ pub fn get_scene_data(scene_image: &RgbaImage, t: f32) -> Vec<PixelData>{
 
     for x in 0..width-0 {
         // for y in height-000..height-00 {
-        // for y in height-100..height-00 {
-        for y in 0..height-000 {
+        for y in height-100..height-00 {
+        // for y in 0..height-000 {
             let pixel = pixel_data.get_mut((x+(y*width)) as usize).unwrap();
             if(pixel.density>=1.0){
                 continue;

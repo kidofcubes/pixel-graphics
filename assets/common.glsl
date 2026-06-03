@@ -21,6 +21,22 @@ float linearFalloff = (1.0/
 
 #define MAX_LIGHTS 1024
 
+// Wavefront tile-bucket constants
+#define TILE_W 16
+#define TILE_H 16
+#define TILES_PER_ROW ((RESOLUTIONX + TILE_W - 1) / TILE_W)
+#define TILES_PER_COL ((RESOLUTIONY + TILE_H - 1) / TILE_H)
+#define TILE_COUNT (TILES_PER_ROW * TILES_PER_COL)
+#define TILE_PIXELS (TILE_W * TILE_H)
+#define MAX_RAYS 80000
+#define MAX_RAYS_PER_TILE_PER_WAVE 512
+
+uint tile_id_of(vec2 p) {
+    int tx = int(p.x) / TILE_W;
+    int ty = int(p.y) / TILE_H;
+    return uint(tx + ty * TILES_PER_ROW);
+}
+
 #define FLT_MAX 3.402823466e+38
 #define FLT_MIN 1.175494351e-38
 
@@ -56,7 +72,7 @@ struct Ray {
     vec2 direction;
 
     vec3 energy;
-    float tile_id;
+    uint tile_id;
 };
 
 float lightIntensity(in float dist){

@@ -15,6 +15,22 @@ use std::time::{Instant, SystemTime, UNIX_EPOCH};
 use crate::glutils::{create_texture, generate_light_data, load_image};
 use crate::scene::{get_scene_data, PixelData};
 
+// Tile constants — must match assets/common.glsl
+pub const TILE_W: u32 = 16;
+pub const TILE_H: u32 = 16;
+pub const MAX_RAYS: usize = 80_000;
+pub const RAYS_PER_FRAME: usize = 80_000;
+pub const MAX_WAVES: usize = 24;
+
+#[repr(C)]
+#[derive(Debug, Clone, Copy, Default)]
+pub struct RayGpu {
+    pub position: [f32; 2],   // offset 0
+    pub direction: [f32; 2],  // offset 8
+    pub energy: [f32; 3],     // offset 16 (vec3 std430 align 16)
+    pub tile_id: u32,         // offset 28
+}
+
 #[derive(Debug, Eq, PartialEq, Hash, Copy, Clone)]
 enum Bindings {
     Fb0Tex,
@@ -23,6 +39,11 @@ enum Bindings {
     ComputeAccuG,
     ComputeAccuB,
     LightList,
+    SortedRays,
+    TileStart,
+    TileCount,
+    QueueB,
+    QueueBCount,
 }
 impl Bindings {
     fn get_id(&self) -> String {
@@ -33,6 +54,11 @@ impl Bindings {
             Bindings::ComputeAccuG => "computeAccuG",
             Bindings::ComputeAccuB => "computeAccuB",
             Bindings::LightList => "lightList",
+            Bindings::SortedRays => "sortedRays",
+            Bindings::TileStart => "tileStart",
+            Bindings::TileCount => "tileCount",
+            Bindings::QueueB => "queueB",
+            Bindings::QueueBCount => "queueBCount",
         }.to_owned()
     }
 }
@@ -63,6 +89,7 @@ enum Program {
     Raytracing,
     StretchedDisplay,
     ComputeRaytracing,
+    TilePass,
     FragTest,
     Accumulation,
 }
@@ -105,6 +132,8 @@ pub struct Renderer {
     scene_mapped_ptr: *mut c_void,
     pixel_data: Vec<PixelData>,
     light_data: Vec<LightPoint>,
+    tiles_per_row: u32,
+    tile_count: usize,
 }
 
 impl Renderer {
@@ -236,17 +265,49 @@ impl Renderer {
 
             bindings.insert(Bindings::Scene.get_id(), (Bindings::Scene,ssbo_id));
 
+            // === Wavefront tile-bucket SSBOs ===
+            let tiles_per_row = ((width + TILE_W - 1) / TILE_W) as usize;
+            let tiles_per_col = ((height + TILE_H - 1) / TILE_H) as usize;
+            let tile_count = tiles_per_row * tiles_per_col;
+
+            let make_ssbo = |size_bytes: GLsizeiptr| -> GLuint {
+                let mut id: GLuint = 0;
+                gl.GenBuffers(1, &mut id);
+                gl.BindBuffer(gl::SHADER_STORAGE_BUFFER, id);
+                gl.BufferData(gl::SHADER_STORAGE_BUFFER, size_bytes, std::ptr::null(), gl::DYNAMIC_DRAW);
+                id
+            };
+
+            let sorted_rays_id  = make_ssbo((MAX_RAYS * mem::size_of::<RayGpu>()) as GLsizeiptr);
+            let tile_start_id   = make_ssbo((tile_count * mem::size_of::<u32>()) as GLsizeiptr);
+            let tile_count_id   = make_ssbo((tile_count * mem::size_of::<u32>()) as GLsizeiptr);
+            let queue_b_id      = make_ssbo((MAX_RAYS * mem::size_of::<RayGpu>()) as GLsizeiptr);
+            let queue_b_count_id = make_ssbo(mem::size_of::<u32>() as GLsizeiptr);
+
+            bindings.insert(Bindings::SortedRays.get_id(),  (Bindings::SortedRays,  sorted_rays_id));
+            bindings.insert(Bindings::TileStart.get_id(),   (Bindings::TileStart,   tile_start_id));
+            bindings.insert(Bindings::TileCount.get_id(),   (Bindings::TileCount,   tile_count_id));
+            bindings.insert(Bindings::QueueB.get_id(),      (Bindings::QueueB,      queue_b_id));
+            bindings.insert(Bindings::QueueBCount.get_id(), (Bindings::QueueBCount, queue_b_count_id));
+
+            println!("tile_count = {} ({}x{} tiles)", tile_count, tiles_per_row, tiles_per_col);
+
+            // let compute_shader = glutils::create_shader(&gl, gl::COMPUTE_SHADER, &PathBuf::from("assets/raytrace.comp"));
 
 
-            let compute_shader = glutils::create_shader(&gl, gl::COMPUTE_SHADER, &PathBuf::from("assets/raytrace.comp"));
-
-
-            let compute_program = gl.CreateProgram();
-            gl.AttachShader(compute_program, compute_shader);
+            // let compute_program = gl.CreateProgram();
+            // gl.AttachShader(compute_program, compute_shader);
             println!("the original-4 is {}",gl.GetError());
-            gl.LinkProgram(compute_program);
+            // gl.LinkProgram(compute_program);
             println!("the original-2 is {}",gl.GetError());
-            programs.insert(Program::ComputeRaytracing, compute_program);
+            // programs.insert(Program::ComputeRaytracing, compute_program);
+
+            // === tile_pass compute program ===
+            let tile_pass_shader = glutils::create_shader(&gl, gl::COMPUTE_SHADER, &PathBuf::from("assets/tile_pass.comp"));
+            let tile_pass_program = gl.CreateProgram();
+            gl.AttachShader(tile_pass_program, tile_pass_shader);
+            gl.LinkProgram(tile_pass_program);
+            programs.insert(Program::TilePass, tile_pass_program);
 
 
 
@@ -288,7 +349,12 @@ impl Renderer {
                     _ => {}
                 }
                 match value.1.0 {
-                    Bindings::Scene => {
+                    Bindings::Scene
+                    | Bindings::SortedRays
+                    | Bindings::TileStart
+                    | Bindings::TileCount
+                    | Bindings::QueueB
+                    | Bindings::QueueBCount => {
                         gl.BindBufferBase(gl::SHADER_STORAGE_BUFFER, shader_storage_block_unit, value.1.1);
                         types.insert(gl::SHADER_STORAGE_BLOCK, shader_storage_block_unit);
                         shader_storage_block_unit+=1;
@@ -368,7 +434,9 @@ impl Renderer {
                 scene,
                 scene_mapped_ptr,
                 pixel_data,
-                light_data
+                light_data,
+                tiles_per_row: tiles_per_row as u32,
+                tile_count,
             }
             // Self { program, gl }
         }
@@ -462,16 +530,8 @@ impl Renderer {
             self.gl.ClearTexImage(self.bindings.get(&Bindings::ComputeAccuR.get_id()).unwrap().1, 0, 0+gl::RED_INTEGER, 0+gl::UNSIGNED_INT, std::ptr::null());
             self.gl.ClearTexImage(self.bindings.get(&Bindings::ComputeAccuG.get_id()).unwrap().1, 0, 0+gl::RED_INTEGER, 0+gl::UNSIGNED_INT, std::ptr::null());
             self.gl.ClearTexImage(self.bindings.get(&Bindings::ComputeAccuB.get_id()).unwrap().1, 0, 0+gl::RED_INTEGER, 0+gl::UNSIGNED_INT, std::ptr::null());
-            self.gl.UseProgram(*self.programs.get(&Program::ComputeRaytracing).unwrap());
-            // self.gl.DispatchCompute(1,360,1);
-
-            self.gl.DispatchCompute(128,1,1);
-            self.gl.MemoryBarrier(gl::SHADER_IMAGE_ACCESS_BARRIER_BIT);
-
-            self.update_uniformi(&Uniform::SunMode, 1);
-            self.gl.UseProgram(*self.programs.get(&Program::ComputeRaytracing).unwrap());
-            self.gl.DispatchCompute(32,1,1);
-            self.gl.MemoryBarrier(gl::SHADER_IMAGE_ACCESS_BARRIER_BIT);
+            // === Stage 1 wavefront: CPU ray gen + CPU sort + GPU tile_pass ===
+            self.run_tile_pass_wave();
 
             self.gl.UseProgram(*self.programs.get(&Program::Accumulation).unwrap());
             self.gl.BindVertexArray(self.vao);
@@ -484,6 +544,161 @@ impl Renderer {
             self.gl.BindFramebuffer(gl::FRAMEBUFFER, 0);
             self.gl.DrawArrays(gl::TRIANGLES, 0, 3);
         }
+    }
+
+    unsafe fn run_tile_pass_wave(&self) {
+        let width = self.scene.width();
+        let height = self.scene.height();
+        let tiles_per_row = self.tiles_per_row as usize;
+        let tile_count = self.tile_count;
+        let lc = self.light_data.len();
+        if lc == 0 { return; }
+
+        // --- CPU ray generation (emissive only for stage 1) ---
+        let num_rays = RAYS_PER_FRAME.min(MAX_RAYS);
+        let mut rays: Vec<RayGpu> = Vec::with_capacity(num_rays);
+        let mut state: u64 = (self.frame as u64)
+            .wrapping_mul(0x9E37_79B9_7F4A_7C15)
+            .wrapping_add(0xDEAD_BEEF_CAFE_BABE);
+        let next_u32 = |s: &mut u64| -> u32 {
+            *s = s.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+            ((*s >> 32) & 0xFFFF_FFFF) as u32
+        };
+        let inv_u32 = 1.0f32 / (u32::MAX as f32);
+
+        for _ in 0..num_rays {
+            let li = (next_u32(&mut state) as usize) % lc;
+            let lp = &self.light_data[li];
+            let lx = lp.x as u32;
+            let ly = lp.y as u32;
+            if lx >= width || ly >= height { continue; }
+            let pix = self.pixel_data[(lx + ly * width) as usize];
+            if pix.emissiveness <= 0.0 { continue; }
+            let jx = next_u32(&mut state) as f32 * inv_u32;
+            let jy = next_u32(&mut state) as f32 * inv_u32;
+            let pos = [lp.x + jx, lp.y + jy];
+            let theta = (next_u32(&mut state) as f32 * inv_u32) * std::f32::consts::TAU;
+            let dir = [theta.cos(), theta.sin()];
+            let energy = [
+                pix.albedo.x * pix.emissiveness,
+                pix.albedo.y * pix.emissiveness,
+                pix.albedo.z * pix.emissiveness,
+            ];
+            let tx = (pos[0] as i32).max(0) as u32 / TILE_W;
+            let ty = (pos[1] as i32).max(0) as u32 / TILE_H;
+            let tid = tx + ty * tiles_per_row as u32;
+            if (tid as usize) >= tile_count { continue; }
+            rays.push(RayGpu { position: pos, direction: dir, energy, tile_id: tid });
+        }
+
+        if rays.is_empty() { return; }
+
+        // --- Wave 0 ---
+        self.sort_upload_dispatch(&rays);
+
+        // --- Waves 1..MAX_WAVES: drain queueB into next wave ---
+        let qb_id     = self.bindings.get(&Bindings::QueueB.get_id()).unwrap().1;
+        let qbcnt_id  = self.bindings.get(&Bindings::QueueBCount.get_id()).unwrap().1;
+
+        for _wave in 1..MAX_WAVES {
+            // Read back queueB count. GetBufferSubData implicitly syncs.
+            let mut count: u32 = 0;
+            self.gl.BindBuffer(gl::SHADER_STORAGE_BUFFER, qbcnt_id);
+            self.gl.GetBufferSubData(
+                gl::SHADER_STORAGE_BUFFER, 0,
+                mem::size_of::<u32>() as GLsizeiptr,
+                &mut count as *mut u32 as *mut c_void,
+            );
+            if count == 0 { break; }
+            let n = (count as usize).min(MAX_RAYS);
+
+            let mut next_rays: Vec<RayGpu> = vec![RayGpu::default(); n];
+            self.gl.BindBuffer(gl::SHADER_STORAGE_BUFFER, qb_id);
+            self.gl.GetBufferSubData(
+                gl::SHADER_STORAGE_BUFFER, 0,
+                (n * mem::size_of::<RayGpu>()) as GLsizeiptr,
+                next_rays.as_mut_ptr() as *mut c_void,
+            );
+            self.gl.BindBuffer(gl::SHADER_STORAGE_BUFFER, 0);
+
+            // Belt-and-suspenders: clamp out-of-range tile_ids (shader should already
+            // produce valid ones, but stray rays from edge cases get dropped here).
+            next_rays.retain(|r| (r.tile_id as usize) < tile_count);
+            if next_rays.is_empty() { break; }
+
+            self.sort_upload_dispatch(&next_rays);
+        }
+    }
+
+    /// Counting-sort `rays` by `tile_id` on CPU, upload `SortedRays`/`TileStart`/`TileCount`,
+    /// zero `queueBCount`, and dispatch `tile_pass` for one wave.
+    unsafe fn sort_upload_dispatch(&self, rays: &[RayGpu]) {
+        let tile_count = self.tile_count;
+
+        let mut counts = vec![0u32; tile_count];
+        for r in rays {
+            let tid = r.tile_id as usize;
+            if tid < tile_count { counts[tid] += 1; }
+        }
+        let mut starts = vec![0u32; tile_count];
+        let mut acc: u32 = 0;
+        for i in 0..tile_count {
+            starts[i] = acc;
+            acc += counts[i];
+        }
+        let total = acc as usize;
+        let mut cursor = starts.clone();
+        let mut sorted: Vec<RayGpu> = vec![RayGpu::default(); total];
+        for r in rays {
+            let tid = r.tile_id as usize;
+            if tid >= tile_count { continue; }
+            let slot = cursor[tid] as usize;
+            cursor[tid] += 1;
+            sorted[slot] = *r;
+        }
+
+        let sorted_id = self.bindings.get(&Bindings::SortedRays.get_id()).unwrap().1;
+        let tstart_id = self.bindings.get(&Bindings::TileStart.get_id()).unwrap().1;
+        let tcount_id = self.bindings.get(&Bindings::TileCount.get_id()).unwrap().1;
+        let qbcnt_id  = self.bindings.get(&Bindings::QueueBCount.get_id()).unwrap().1;
+
+        if !sorted.is_empty() {
+            self.gl.BindBuffer(gl::SHADER_STORAGE_BUFFER, sorted_id);
+            self.gl.BufferSubData(
+                gl::SHADER_STORAGE_BUFFER, 0,
+                (sorted.len() * mem::size_of::<RayGpu>()) as GLsizeiptr,
+                sorted.as_ptr() as *const c_void,
+            );
+        }
+
+        self.gl.BindBuffer(gl::SHADER_STORAGE_BUFFER, tstart_id);
+        self.gl.BufferSubData(
+            gl::SHADER_STORAGE_BUFFER, 0,
+            (starts.len() * mem::size_of::<u32>()) as GLsizeiptr,
+            starts.as_ptr() as *const c_void,
+        );
+
+        self.gl.BindBuffer(gl::SHADER_STORAGE_BUFFER, tcount_id);
+        self.gl.BufferSubData(
+            gl::SHADER_STORAGE_BUFFER, 0,
+            (counts.len() * mem::size_of::<u32>()) as GLsizeiptr,
+            counts.as_ptr() as *const c_void,
+        );
+
+        let zero: u32 = 0;
+        self.gl.BindBuffer(gl::SHADER_STORAGE_BUFFER, qbcnt_id);
+        self.gl.BufferSubData(
+            gl::SHADER_STORAGE_BUFFER, 0,
+            mem::size_of::<u32>() as GLsizeiptr,
+            &zero as *const u32 as *const c_void,
+        );
+        self.gl.BindBuffer(gl::SHADER_STORAGE_BUFFER, 0);
+
+        self.gl.MemoryBarrier(gl::SHADER_STORAGE_BARRIER_BIT);
+
+        self.gl.UseProgram(*self.programs.get(&Program::TilePass).unwrap());
+        self.gl.DispatchCompute(self.tile_count as u32, 1, 1);
+        self.gl.MemoryBarrier(gl::SHADER_IMAGE_ACCESS_BARRIER_BIT | gl::SHADER_STORAGE_BARRIER_BIT);
     }
 
     pub fn resize(&self, width: i32, height: i32) {
