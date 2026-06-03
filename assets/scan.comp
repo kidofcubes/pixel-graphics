@@ -1,0 +1,37 @@
+// Exclusive prefix scan over tile_count[] -> tile_start[]. Single workgroup.
+// SCAN_SIZE must be a power of two and >= TILE_COUNT.
+#define SCAN_SIZE 1024
+
+layout(local_size_x = SCAN_SIZE, local_size_y = 1, local_size_z = 1) in;
+
+layout(std430) readonly restrict buffer tileCount {
+    uint tile_count[];
+};
+layout(std430) restrict buffer tileStart {
+    uint tile_start[];
+};
+layout(std430) restrict buffer tileWriteCursor {
+    uint tile_write_cursor[];
+};
+
+shared uint s[SCAN_SIZE];
+
+void main() {
+    uint i = gl_LocalInvocationID.x;
+    uint v = (i < uint(TILE_COUNT)) ? tile_count[i] : 0u;
+    s[i] = v;
+    barrier();
+
+    // Hillis-Steele inclusive scan in shared memory.
+    for (uint off = 1u; off < uint(SCAN_SIZE); off <<= 1u) {
+        uint add = (i >= off) ? s[i - off] : 0u;
+        barrier();
+        s[i] += add;
+        barrier();
+    }
+
+    if (i < uint(TILE_COUNT)) {
+        tile_start[i] = s[i] - v;       // inclusive -> exclusive
+        tile_write_cursor[i] = 0u;      // reset for scatter
+    }
+}

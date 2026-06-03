@@ -1,0 +1,28 @@
+layout(local_size_x = 256, local_size_y = 1, local_size_z = 1) in;
+
+layout(std430, binding = 10) readonly restrict buffer inputQueue {
+    Ray q_in[];
+};
+layout(std430, binding = 12) readonly restrict buffer inputCount {
+    uint cnt_in;
+};
+
+layout(std430) restrict buffer sortedRays {
+    Ray sorted[];
+};
+layout(std430) readonly restrict buffer tileStart {
+    uint tile_start[];
+};
+layout(std430) restrict buffer tileWriteCursor {
+    uint tile_write_cursor[];
+};
+
+void main() {
+    uint gid = gl_GlobalInvocationID.x;
+    if (gid >= cnt_in) return;
+    Ray r = q_in[gid];
+    uint tid = r.tile_id;
+    if (tid >= uint(TILE_COUNT)) return;
+    uint dst = tile_start[tid] + atomicAdd(tile_write_cursor[tid], 1u);
+    if (dst < uint(MAX_RAYS)) sorted[dst] = r;
+}

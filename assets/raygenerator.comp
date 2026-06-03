@@ -1,0 +1,95 @@
+layout(local_size_x = 256, local_size_y = 1, local_size_z = 1) in;
+
+uniform int frame;
+uniform int lightCount;
+uniform int sunMode;
+uniform float timeOfDay;
+uniform uint raysToEmit;
+
+layout(std140) uniform lightList {
+    LightPoint light_points[MAX_LIGHTS];
+};
+
+layout(std430) readonly restrict buffer scene {
+    PixelData scene_pixels[];
+};
+
+layout(std430, binding = 11) restrict buffer outputQueue {
+    Ray q_out[];
+};
+layout(std430, binding = 13) restrict buffer outputCount {
+    uint cnt_out;
+};
+
+void append_ray(vec2 pos, vec2 dir, vec3 energy) {
+    if (max(max(energy.x, energy.y), energy.z) <= 0.00001) return;
+    uint slot = atomicAdd(cnt_out, 1u);
+    if (slot >= uint(MAX_RAYS)) return;
+    Ray r;
+    r.position = pos;
+    r.direction = dir;
+    r.energy = energy;
+    r.tile_id = tile_id_of(pos);
+    q_out[slot] = r;
+}
+
+void main() {
+    uint gid = gl_GlobalInvocationID.x;
+    if (gid >= raysToEmit) return;
+
+    float seed = float(gid) * 0.6180339887 + float(frame) * 0.31415926;
+
+    if (sunMode == 0) {
+        // Emissive rays from light_points
+        if (lightCount <= 0) return;
+        uint li = uint(floor(noise2(seed, 1.0) * float(lightCount))) % uint(lightCount);
+        LightPoint lp = light_points[li];
+        int lx = int(lp.x);
+        int ly = int(lp.y);
+        if (lx < 0 || lx >= RESOLUTIONX || ly < 0 || ly >= RESOLUTIONY) return;
+        PixelData px = scene_pixels[lx + ly * RESOLUTIONX];
+        if (px.emissiveness <= 0.0) return;
+
+        float jx = noise2(seed, 2.0);
+        float jy = noise2(seed, 3.0);
+        vec2 pos = vec2(lp.x + jx, lp.y + jy);
+        float theta = noise2(seed, 4.0) * 2.0 * PI;
+        vec2 dir = vec2(cos(theta), sin(theta));
+        vec3 energy = px.color * px.emissiveness;
+        append_ray(pos, dir, energy);
+    } else {
+        // Sun/moon rays from outside the image, marching inward.
+        vec2 dir;
+        if (timeOfDay < 0.5) {
+            dir = vec2(-cos(timeOfDay * PI * 2.0), -sin(timeOfDay * PI * 2.0));
+        } else {
+            dir = vec2(cos(timeOfDay * PI * 2.0), sin(timeOfDay * PI * 2.0));
+        }
+        vec2 perp = vec2(-dir.y, dir.x);
+
+        float p0 = dot(vec2(0.0, 0.0), perp);
+        float p1 = dot(vec2(0.0, float(RESOLUTIONY)), perp);
+        float p2 = dot(vec2(float(RESOLUTIONX), float(RESOLUTIONY)), perp);
+        float p3 = dot(vec2(float(RESOLUTIONX), 0.0), perp);
+        float minPerp = min(min(p0, p1), min(p2, p3));
+        float maxPerp = max(max(p0, p1), max(p2, p3));
+
+        vec2 initPos = (perp * mix(minPerp, maxPerp, noise2(float(gid), float(frame) / 1000.0)))
+                     - (dir * (sqrt(float(RESOLUTIONX * RESOLUTIONY)) + 10.0));
+        float t0 = (initPos.y - float(RESOLUTIONY - 1)) / -dir.y;
+        float t1;
+        if (dir.x < 0.0) {
+            t1 = (initPos.x - float(RESOLUTIONX - 1)) / -dir.x;
+        } else {
+            t1 = (initPos.x - 0.0) / -dir.x;
+        }
+        initPos = initPos + (dir * max(t0, t1));
+
+        // Drop if the start point isn't inside the image after the entry-clamp.
+        if (initPos.x < 0.0 || initPos.x >= float(RESOLUTIONX) ||
+            initPos.y < 0.0 || initPos.y >= float(RESOLUTIONY)) return;
+
+        vec3 currentLight = vec3(1.0, 0.9, 0.6) * 300.0;
+        append_ray(initPos, dir, currentLight);
+    }
+}

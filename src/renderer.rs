@@ -19,7 +19,8 @@ use crate::scene::{get_scene_data, PixelData};
 pub const TILE_W: u32 = 16;
 pub const TILE_H: u32 = 16;
 pub const MAX_RAYS: usize = 80_000;
-pub const RAYS_PER_FRAME: usize = 80_000;
+pub const RAYS_PER_FRAME: usize = 64_000;
+pub const SUN_RAYS_PER_FRAME: usize = 16_000;
 pub const MAX_WAVES: usize = 24;
 
 #[repr(C)]
@@ -42,8 +43,11 @@ enum Bindings {
     SortedRays,
     TileStart,
     TileCount,
+    QueueA,
+    QueueACount,
     QueueB,
     QueueBCount,
+    TileWriteCursor,
 }
 impl Bindings {
     fn get_id(&self) -> String {
@@ -57,11 +61,22 @@ impl Bindings {
             Bindings::SortedRays => "sortedRays",
             Bindings::TileStart => "tileStart",
             Bindings::TileCount => "tileCount",
+            Bindings::QueueA => "queueA",
+            Bindings::QueueACount => "queueACount",
             Bindings::QueueB => "queueB",
             Bindings::QueueBCount => "queueBCount",
+            Bindings::TileWriteCursor => "tileWriteCursor",
         }.to_owned()
     }
 }
+
+// Fixed SSBO binding slots for the ping-pong ray queues. Shaders declare these
+// with explicit `layout(binding = N)` and Rust calls BindBufferBase per wave to
+// swap which physical buffer occupies each role.
+const SLOT_INPUT_QUEUE:  GLuint = 10;
+const SLOT_OUTPUT_QUEUE: GLuint = 11;
+const SLOT_INPUT_COUNT:  GLuint = 12;
+const SLOT_OUTPUT_COUNT: GLuint = 13;
 
 
 #[derive(Debug, Eq, PartialEq, Hash, Copy, Clone)]
@@ -90,6 +105,10 @@ enum Program {
     StretchedDisplay,
     ComputeRaytracing,
     TilePass,
+    RayGenerator,
+    Count,
+    Scan,
+    Scatter,
     FragTest,
     Accumulation,
 }
@@ -278,17 +297,23 @@ impl Renderer {
                 id
             };
 
-            let sorted_rays_id  = make_ssbo((MAX_RAYS * mem::size_of::<RayGpu>()) as GLsizeiptr);
-            let tile_start_id   = make_ssbo((tile_count * mem::size_of::<u32>()) as GLsizeiptr);
-            let tile_count_id   = make_ssbo((tile_count * mem::size_of::<u32>()) as GLsizeiptr);
-            let queue_b_id      = make_ssbo((MAX_RAYS * mem::size_of::<RayGpu>()) as GLsizeiptr);
-            let queue_b_count_id = make_ssbo(mem::size_of::<u32>() as GLsizeiptr);
+            let sorted_rays_id       = make_ssbo((MAX_RAYS * mem::size_of::<RayGpu>()) as GLsizeiptr);
+            let tile_start_id        = make_ssbo((tile_count * mem::size_of::<u32>()) as GLsizeiptr);
+            let tile_count_id        = make_ssbo((tile_count * mem::size_of::<u32>()) as GLsizeiptr);
+            let tile_write_cursor_id = make_ssbo((tile_count * mem::size_of::<u32>()) as GLsizeiptr);
+            let queue_a_id           = make_ssbo((MAX_RAYS * mem::size_of::<RayGpu>()) as GLsizeiptr);
+            let queue_a_count_id     = make_ssbo(mem::size_of::<u32>() as GLsizeiptr);
+            let queue_b_id           = make_ssbo((MAX_RAYS * mem::size_of::<RayGpu>()) as GLsizeiptr);
+            let queue_b_count_id     = make_ssbo(mem::size_of::<u32>() as GLsizeiptr);
 
-            bindings.insert(Bindings::SortedRays.get_id(),  (Bindings::SortedRays,  sorted_rays_id));
-            bindings.insert(Bindings::TileStart.get_id(),   (Bindings::TileStart,   tile_start_id));
-            bindings.insert(Bindings::TileCount.get_id(),   (Bindings::TileCount,   tile_count_id));
-            bindings.insert(Bindings::QueueB.get_id(),      (Bindings::QueueB,      queue_b_id));
-            bindings.insert(Bindings::QueueBCount.get_id(), (Bindings::QueueBCount, queue_b_count_id));
+            bindings.insert(Bindings::SortedRays.get_id(),      (Bindings::SortedRays,      sorted_rays_id));
+            bindings.insert(Bindings::TileStart.get_id(),       (Bindings::TileStart,       tile_start_id));
+            bindings.insert(Bindings::TileCount.get_id(),       (Bindings::TileCount,       tile_count_id));
+            bindings.insert(Bindings::TileWriteCursor.get_id(), (Bindings::TileWriteCursor, tile_write_cursor_id));
+            bindings.insert(Bindings::QueueA.get_id(),          (Bindings::QueueA,          queue_a_id));
+            bindings.insert(Bindings::QueueACount.get_id(),     (Bindings::QueueACount,     queue_a_count_id));
+            bindings.insert(Bindings::QueueB.get_id(),          (Bindings::QueueB,          queue_b_id));
+            bindings.insert(Bindings::QueueBCount.get_id(),     (Bindings::QueueBCount,     queue_b_count_id));
 
             println!("tile_count = {} ({}x{} tiles)", tile_count, tiles_per_row, tiles_per_col);
 
@@ -302,12 +327,19 @@ impl Renderer {
             println!("the original-2 is {}",gl.GetError());
             // programs.insert(Program::ComputeRaytracing, compute_program);
 
-            // === tile_pass compute program ===
-            let tile_pass_shader = glutils::create_shader(&gl, gl::COMPUTE_SHADER, &PathBuf::from("assets/tile_pass.comp"));
-            let tile_pass_program = gl.CreateProgram();
-            gl.AttachShader(tile_pass_program, tile_pass_shader);
-            gl.LinkProgram(tile_pass_program);
-            programs.insert(Program::TilePass, tile_pass_program);
+            // === wavefront compute programs ===
+            let load_compute = |path: &str| -> GLuint {
+                let sh = glutils::create_shader(&gl, gl::COMPUTE_SHADER, &PathBuf::from(path));
+                let p = gl.CreateProgram();
+                gl.AttachShader(p, sh);
+                gl.LinkProgram(p);
+                p
+            };
+            programs.insert(Program::TilePass,     load_compute("assets/tile_pass.comp"));
+            programs.insert(Program::RayGenerator, load_compute("assets/raygenerator.comp"));
+            programs.insert(Program::Count,        load_compute("assets/count.comp"));
+            programs.insert(Program::Scan,         load_compute("assets/scan.comp"));
+            programs.insert(Program::Scatter,      load_compute("assets/scatter.comp"));
 
 
 
@@ -353,12 +385,14 @@ impl Renderer {
                     | Bindings::SortedRays
                     | Bindings::TileStart
                     | Bindings::TileCount
-                    | Bindings::QueueB
-                    | Bindings::QueueBCount => {
+                    | Bindings::TileWriteCursor => {
                         gl.BindBufferBase(gl::SHADER_STORAGE_BUFFER, shader_storage_block_unit, value.1.1);
                         types.insert(gl::SHADER_STORAGE_BLOCK, shader_storage_block_unit);
                         shader_storage_block_unit+=1;
                     },
+                    // QueueA/B and their counts use fixed binding slots (SLOT_*_QUEUE/COUNT)
+                    // managed by per-wave BindBufferBase calls below; skip them here.
+                    Bindings::QueueA | Bindings::QueueB | Bindings::QueueACount | Bindings::QueueBCount => {},
                     _ => {}
                 }
                 println!("BINDED {:?} to {:?}",value.1.0, types);
@@ -530,8 +564,8 @@ impl Renderer {
             self.gl.ClearTexImage(self.bindings.get(&Bindings::ComputeAccuR.get_id()).unwrap().1, 0, 0+gl::RED_INTEGER, 0+gl::UNSIGNED_INT, std::ptr::null());
             self.gl.ClearTexImage(self.bindings.get(&Bindings::ComputeAccuG.get_id()).unwrap().1, 0, 0+gl::RED_INTEGER, 0+gl::UNSIGNED_INT, std::ptr::null());
             self.gl.ClearTexImage(self.bindings.get(&Bindings::ComputeAccuB.get_id()).unwrap().1, 0, 0+gl::RED_INTEGER, 0+gl::UNSIGNED_INT, std::ptr::null());
-            // === Stage 1 wavefront: CPU ray gen + CPU sort + GPU tile_pass ===
-            self.run_tile_pass_wave();
+            // === Wavefront pipeline: GPU raygen + GPU counting sort + tile_pass ===
+            self.run_wavefront_frame();
 
             self.gl.UseProgram(*self.programs.get(&Program::Accumulation).unwrap());
             self.gl.BindVertexArray(self.vao);
@@ -546,159 +580,118 @@ impl Renderer {
         }
     }
 
-    unsafe fn run_tile_pass_wave(&self) {
-        let width = self.scene.width();
-        let height = self.scene.height();
-        let tiles_per_row = self.tiles_per_row as usize;
-        let tile_count = self.tile_count;
-        let lc = self.light_data.len();
-        if lc == 0 { return; }
+    /// Zero out an entire SSBO using glClearBufferData (no CPU upload needed).
+    unsafe fn zero_ssbo(&self, buf: GLuint) {
+        self.gl.BindBuffer(gl::SHADER_STORAGE_BUFFER, buf);
+        self.gl.ClearBufferData(
+            gl::SHADER_STORAGE_BUFFER,
+            gl::R32UI,
+            gl::RED_INTEGER,
+            gl::UNSIGNED_INT,
+            std::ptr::null(),
+        );
+        self.gl.BindBuffer(gl::SHADER_STORAGE_BUFFER, 0);
+    }
 
-        // --- CPU ray generation (emissive only for stage 1) ---
-        let num_rays = RAYS_PER_FRAME.min(MAX_RAYS);
-        let mut rays: Vec<RayGpu> = Vec::with_capacity(num_rays);
-        let mut state: u64 = (self.frame as u64)
-            .wrapping_mul(0x9E37_79B9_7F4A_7C15)
-            .wrapping_add(0xDEAD_BEEF_CAFE_BABE);
-        let next_u32 = |s: &mut u64| -> u32 {
-            *s = s.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
-            ((*s >> 32) & 0xFFFF_FFFF) as u32
-        };
-        let inv_u32 = 1.0f32 / (u32::MAX as f32);
-
-        for _ in 0..num_rays {
-            let li = (next_u32(&mut state) as usize) % lc;
-            let lp = &self.light_data[li];
-            let lx = lp.x as u32;
-            let ly = lp.y as u32;
-            if lx >= width || ly >= height { continue; }
-            let pix = self.pixel_data[(lx + ly * width) as usize];
-            if pix.emissiveness <= 0.0 { continue; }
-            let jx = next_u32(&mut state) as f32 * inv_u32;
-            let jy = next_u32(&mut state) as f32 * inv_u32;
-            let pos = [lp.x + jx, lp.y + jy];
-            let theta = (next_u32(&mut state) as f32 * inv_u32) * std::f32::consts::TAU;
-            let dir = [theta.cos(), theta.sin()];
-            let energy = [
-                pix.albedo.x * pix.emissiveness,
-                pix.albedo.y * pix.emissiveness,
-                pix.albedo.z * pix.emissiveness,
-            ];
-            let tx = (pos[0] as i32).max(0) as u32 / TILE_W;
-            let ty = (pos[1] as i32).max(0) as u32 / TILE_H;
-            let tid = tx + ty * tiles_per_row as u32;
-            if (tid as usize) >= tile_count { continue; }
-            rays.push(RayGpu { position: pos, direction: dir, energy, tile_id: tid });
-        }
-
-        if rays.is_empty() { return; }
-
-        // --- Wave 0 ---
-        self.sort_upload_dispatch(&rays);
-
-        // --- Waves 1..MAX_WAVES: drain queueB into next wave ---
-        let qb_id     = self.bindings.get(&Bindings::QueueB.get_id()).unwrap().1;
-        let qbcnt_id  = self.bindings.get(&Bindings::QueueBCount.get_id()).unwrap().1;
-
-        for _wave in 1..MAX_WAVES {
-            // Read back queueB count. GetBufferSubData implicitly syncs.
-            let mut count: u32 = 0;
-            self.gl.BindBuffer(gl::SHADER_STORAGE_BUFFER, qbcnt_id);
-            self.gl.GetBufferSubData(
-                gl::SHADER_STORAGE_BUFFER, 0,
-                mem::size_of::<u32>() as GLsizeiptr,
-                &mut count as *mut u32 as *mut c_void,
-            );
-            if count == 0 { break; }
-            let n = (count as usize).min(MAX_RAYS);
-
-            let mut next_rays: Vec<RayGpu> = vec![RayGpu::default(); n];
-            self.gl.BindBuffer(gl::SHADER_STORAGE_BUFFER, qb_id);
-            self.gl.GetBufferSubData(
-                gl::SHADER_STORAGE_BUFFER, 0,
-                (n * mem::size_of::<RayGpu>()) as GLsizeiptr,
-                next_rays.as_mut_ptr() as *mut c_void,
-            );
-            self.gl.BindBuffer(gl::SHADER_STORAGE_BUFFER, 0);
-
-            // Belt-and-suspenders: clamp out-of-range tile_ids (shader should already
-            // produce valid ones, but stray rays from edge cases get dropped here).
-            next_rays.retain(|r| (r.tile_id as usize) < tile_count);
-            if next_rays.is_empty() { break; }
-
-            self.sort_upload_dispatch(&next_rays);
+    /// Set a `uint` uniform on the currently-active program.
+    unsafe fn set_uniform_u(&self, program: GLuint, name: &str, value: u32) {
+        let cname = CString::new(name).unwrap();
+        let loc = self.gl.GetUniformLocation(program, cname.as_ptr());
+        if loc != -1 {
+            self.gl.Uniform1ui(loc, value);
         }
     }
 
-    /// Counting-sort `rays` by `tile_id` on CPU, upload `SortedRays`/`TileStart`/`TileCount`,
-    /// zero `queueBCount`, and dispatch `tile_pass` for one wave.
-    unsafe fn sort_upload_dispatch(&self, rays: &[RayGpu]) {
-        let tile_count = self.tile_count;
+    /// Bind a buffer to a fixed SSBO slot.
+    unsafe fn bind_slot(&self, slot: GLuint, buf: GLuint) {
+        self.gl.BindBufferBase(gl::SHADER_STORAGE_BUFFER, slot, buf);
+    }
 
-        let mut counts = vec![0u32; tile_count];
-        for r in rays {
-            let tid = r.tile_id as usize;
-            if tid < tile_count { counts[tid] += 1; }
-        }
-        let mut starts = vec![0u32; tile_count];
-        let mut acc: u32 = 0;
-        for i in 0..tile_count {
-            starts[i] = acc;
-            acc += counts[i];
-        }
-        let total = acc as usize;
-        let mut cursor = starts.clone();
-        let mut sorted: Vec<RayGpu> = vec![RayGpu::default(); total];
-        for r in rays {
-            let tid = r.tile_id as usize;
-            if tid >= tile_count { continue; }
-            let slot = cursor[tid] as usize;
-            cursor[tid] += 1;
-            sorted[slot] = *r;
-        }
+    unsafe fn run_wavefront_frame(&self) {
+        let queue_a_id   = self.bindings.get(&Bindings::QueueA.get_id()).unwrap().1;
+        let queue_a_cnt  = self.bindings.get(&Bindings::QueueACount.get_id()).unwrap().1;
+        let queue_b_id   = self.bindings.get(&Bindings::QueueB.get_id()).unwrap().1;
+        let queue_b_cnt  = self.bindings.get(&Bindings::QueueBCount.get_id()).unwrap().1;
+        let tile_count_id = self.bindings.get(&Bindings::TileCount.get_id()).unwrap().1;
 
-        let sorted_id = self.bindings.get(&Bindings::SortedRays.get_id()).unwrap().1;
-        let tstart_id = self.bindings.get(&Bindings::TileStart.get_id()).unwrap().1;
-        let tcount_id = self.bindings.get(&Bindings::TileCount.get_id()).unwrap().1;
-        let qbcnt_id  = self.bindings.get(&Bindings::QueueBCount.get_id()).unwrap().1;
+        // ------------------------------------------------------------------
+        // Ray emission: write into queue A.
+        // ------------------------------------------------------------------
+        self.zero_ssbo(queue_a_cnt);
+        self.bind_slot(SLOT_OUTPUT_QUEUE, queue_a_id);
+        self.bind_slot(SLOT_OUTPUT_COUNT, queue_a_cnt);
+        self.gl.MemoryBarrier(gl::BUFFER_UPDATE_BARRIER_BIT | gl::SHADER_STORAGE_BARRIER_BIT);
 
-        if !sorted.is_empty() {
-            self.gl.BindBuffer(gl::SHADER_STORAGE_BUFFER, sorted_id);
-            self.gl.BufferSubData(
-                gl::SHADER_STORAGE_BUFFER, 0,
-                (sorted.len() * mem::size_of::<RayGpu>()) as GLsizeiptr,
-                sorted.as_ptr() as *const c_void,
-            );
-        }
+        let raygen_prog = *self.programs.get(&Program::RayGenerator).unwrap();
+        self.gl.UseProgram(raygen_prog);
 
-        self.gl.BindBuffer(gl::SHADER_STORAGE_BUFFER, tstart_id);
-        self.gl.BufferSubData(
-            gl::SHADER_STORAGE_BUFFER, 0,
-            (starts.len() * mem::size_of::<u32>()) as GLsizeiptr,
-            starts.as_ptr() as *const c_void,
-        );
+        // Emissive rays (sunMode = 0).
+        self.update_uniformi(&Uniform::SunMode, 0);
+        let emissive_rays = RAYS_PER_FRAME as u32;
+        self.set_uniform_u(raygen_prog, "raysToEmit", emissive_rays);
+        let wgs = (emissive_rays + 255) / 256;
+        self.gl.DispatchCompute(wgs, 1, 1);
 
-        self.gl.BindBuffer(gl::SHADER_STORAGE_BUFFER, tcount_id);
-        self.gl.BufferSubData(
-            gl::SHADER_STORAGE_BUFFER, 0,
-            (counts.len() * mem::size_of::<u32>()) as GLsizeiptr,
-            counts.as_ptr() as *const c_void,
-        );
-
-        let zero: u32 = 0;
-        self.gl.BindBuffer(gl::SHADER_STORAGE_BUFFER, qbcnt_id);
-        self.gl.BufferSubData(
-            gl::SHADER_STORAGE_BUFFER, 0,
-            mem::size_of::<u32>() as GLsizeiptr,
-            &zero as *const u32 as *const c_void,
-        );
-        self.gl.BindBuffer(gl::SHADER_STORAGE_BUFFER, 0);
+        // Sun rays (sunMode = 1).
+        self.update_uniformi(&Uniform::SunMode, 1);
+        let sun_rays = SUN_RAYS_PER_FRAME as u32;
+        self.set_uniform_u(raygen_prog, "raysToEmit", sun_rays);
+        let wgs = (sun_rays + 255) / 256;
+        self.gl.DispatchCompute(wgs, 1, 1);
 
         self.gl.MemoryBarrier(gl::SHADER_STORAGE_BARRIER_BIT);
 
-        self.gl.UseProgram(*self.programs.get(&Program::TilePass).unwrap());
-        self.gl.DispatchCompute(self.tile_count as u32, 1, 1);
-        self.gl.MemoryBarrier(gl::SHADER_IMAGE_ACCESS_BARRIER_BIT | gl::SHADER_STORAGE_BARRIER_BIT);
+        // ------------------------------------------------------------------
+        // Wave loop: ping-pong queueA <-> queueB.
+        // ------------------------------------------------------------------
+        let count_prog    = *self.programs.get(&Program::Count).unwrap();
+        let scan_prog     = *self.programs.get(&Program::Scan).unwrap();
+        let scatter_prog  = *self.programs.get(&Program::Scatter).unwrap();
+        let tilepass_prog = *self.programs.get(&Program::TilePass).unwrap();
+
+        let sort_wgs = ((MAX_RAYS + 255) / 256) as u32;
+        let tile_wgs = self.tile_count as u32;
+
+        for wave in 0..MAX_WAVES {
+            let (in_q, in_c, out_q, out_c) = if wave % 2 == 0 {
+                (queue_a_id, queue_a_cnt, queue_b_id, queue_b_cnt)
+            } else {
+                (queue_b_id, queue_b_cnt, queue_a_id, queue_a_cnt)
+            };
+
+            self.bind_slot(SLOT_INPUT_QUEUE,  in_q);
+            self.bind_slot(SLOT_INPUT_COUNT,  in_c);
+            self.bind_slot(SLOT_OUTPUT_QUEUE, out_q);
+            self.bind_slot(SLOT_OUTPUT_COUNT, out_c);
+
+            self.zero_ssbo(out_c);
+            self.zero_ssbo(tile_count_id);
+            self.gl.MemoryBarrier(gl::BUFFER_UPDATE_BARRIER_BIT | gl::SHADER_STORAGE_BARRIER_BIT);
+
+            // Count rays per tile.
+            self.gl.UseProgram(count_prog);
+            self.gl.DispatchCompute(sort_wgs, 1, 1);
+            self.gl.MemoryBarrier(gl::SHADER_STORAGE_BARRIER_BIT);
+
+            // Exclusive prefix scan -> tile_start (also zeroes tile_write_cursor).
+            self.gl.UseProgram(scan_prog);
+            self.gl.DispatchCompute(1, 1, 1);
+            self.gl.MemoryBarrier(gl::SHADER_STORAGE_BARRIER_BIT);
+
+            // Scatter rays into sortedRays.
+            self.gl.UseProgram(scatter_prog);
+            self.gl.DispatchCompute(sort_wgs, 1, 1);
+            self.gl.MemoryBarrier(gl::SHADER_STORAGE_BARRIER_BIT);
+
+            // March one tile-width per ray, depositing light and emitting survivors.
+            self.gl.UseProgram(tilepass_prog);
+            self.gl.DispatchCompute(tile_wgs, 1, 1);
+            self.gl.MemoryBarrier(
+                gl::SHADER_IMAGE_ACCESS_BARRIER_BIT | gl::SHADER_STORAGE_BARRIER_BIT,
+            );
+
+            let _ = wave;
+        }
     }
 
     pub fn resize(&self, width: i32, height: i32) {
