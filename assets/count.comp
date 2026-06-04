@@ -1,13 +1,13 @@
 layout(local_size_x = 256, local_size_y = 1, local_size_z = 1) in;
 
-layout(std430, binding = 10) readonly restrict buffer inputQueue {
+layout(std430, binding = INPUTQUEUE) readonly restrict buffer inputQueue {
     Ray q_in[];
 };
-layout(std430, binding = 12) readonly restrict buffer inputCount {
+layout(std430, binding = INPUTCOUNT) readonly restrict buffer inputCount {
     uint cnt_in;
 };
 
-layout(std430) restrict buffer tileCount {
+layout(std430, binding = TILECOUNT) restrict buffer tileCount {
     uint tile_count[];
 };
 

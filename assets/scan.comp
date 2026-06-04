@@ -4,13 +4,13 @@
 
 layout(local_size_x = SCAN_SIZE, local_size_y = 1, local_size_z = 1) in;
 
-layout(std430) readonly restrict buffer tileCount {
+layout(std430, binding = TILECOUNT) readonly restrict buffer tileCount {
     uint tile_count[];
 };
-layout(std430) restrict buffer tileStart {
+layout(std430, binding = TILESTART) restrict buffer tileStart {
     uint tile_start[];
 };
-layout(std430) restrict buffer tileWriteCursor {
+layout(std430, binding = TILEWRITECURSOR) restrict buffer tileWriteCursor {
     uint tile_write_cursor[];
 };
 

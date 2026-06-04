@@ -5,7 +5,7 @@ layout(r32ui, binding = 1) uniform highp uimage2D computeAccuG;
 layout(r32ui, binding = 2) uniform highp uimage2D computeAccuB;
 
 // --- Uniforms from Host ---
-uniform int frame;                  // Current frame/sample count (for initial frame check)
+layout(location = FRAME)        uniform int frame;
 
 // Loopback Buffer Read (Previous Frame's accumulated color)
 uniform sampler2D fb0tex;

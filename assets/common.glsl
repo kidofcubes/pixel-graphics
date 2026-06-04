@@ -1,5 +1,39 @@
 #version 460
-#extension GL_EXT_gpu_shader4 : enable
+#pragma optimize(off)
+#pragma debug(on)
+
+//LAYOUT INDEXES
+
+//IMAGE BINDINGS
+#define FB0TEX          10
+#define COMPUTEACCUR    11
+#define COMPUTEACCUG    12
+#define COMPUTEACCUB    13
+
+
+//UNIFORM LOCATIONS
+#define FRAME           10
+#define LIGHTCOUNT      11
+#define TIMEOFDAY       12
+#define SUNMODE         13
+#define REALTIME        14
+#define RAYSTOEMIT      15
+
+
+//SSBO BINDINGS
+#define SCENE           10
+#define LIGHTLIST       11
+#define SORTEDRAYS      12
+#define TILESTART       13
+#define TILECOUNT       14
+#define TILEWRITECURSOR 15
+#define INPUTQUEUE      16
+#define INPUTCOUNT      17
+#define OUTPUTQUEUE     18
+#define OUTPUTCOUNT     19
+
+//LAYOUT INDEXES END
+
 #define KEEP_FRAMES 100
 #define COMPUTE_MULTIPLIER 1000000
 
@@ -28,7 +62,7 @@ float linearFalloff = (1.0/
 #define TILES_PER_COL int((RESOLUTIONY + TILE_H - 1) / TILE_H)
 #define TILE_COUNT (TILES_PER_ROW * TILES_PER_COL)
 #define TILE_PIXELS (TILE_W * TILE_H)
-#define MAX_RAYS 8000000
+#define MAX_RAYS 800000
 
 uint tile_id_of(vec2 p) {
     int tx = int(p.x) / TILE_W;
@@ -468,63 +502,6 @@ vec2 rotate2d(vec2 v, float a) {
     float c = cos(a);
     return vec2(v.x * c - v.y * s, v.x * s + v.y * c);
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 

@@ -1,9 +1,10 @@
 use std::ffi::CStr;
 use std::fs;
 use std::os::raw::c_void;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use image::{ImageReader, RgbaImage};
-use crate::{gl, scene};
+use shaderc::{CompileOptions, Compiler, ShaderKind};
+use crate::{gl, glutils, scene};
 use crate::gl::types::{GLchar, GLenum, GLint, GLsizei, GLuint};
 use crate::renderer::LightPoint;
 use crate::scene::PixelData;
@@ -179,7 +180,7 @@ pub unsafe fn create_shader(
 
 
     // println!("the shader source is {}", shader_source);
-    gl.ShaderSource(shader, 1, [get_shader_source(path).as_bytes().as_ptr().cast()].as_ptr(), std::ptr::null());
+    gl.ShaderSource(shader, 1, [get_shader_source(path, true).as_bytes().as_ptr().cast()].as_ptr(), std::ptr::null());
     // gl.ShaderSource(shader, 1, [source.as_ptr().cast()].as_ptr(), std::ptr::null());
     // println!("the compiling2 is {}",gl.GetError());
     gl.CompileShader(shader);
@@ -194,14 +195,100 @@ pub unsafe fn create_shader(
     shader
 }
 
-fn get_shader_source(
+pub unsafe fn create_compute_shader_as_program(
+    gl: &gl::Gl,
     path: &Path,
+) -> gl::types::GLuint {
+    let compiled_spirv_shader = compile_shader(&get_shader_source(path, false), ShaderKind::DefaultCompute, path.to_str().unwrap());
+    let program = create_compute_program(gl, &compiled_spirv_shader);
+
+    let label = path.to_str().unwrap();
+    gl.ObjectLabel(
+        gl::PROGRAM,
+        program,
+        label.len() as GLsizei,
+        label.as_ptr() as *const GLchar,
+    );
+    program
+}
+
+fn compile_shader(src: &str, kind: ShaderKind, name: &str) -> Vec<u32> {
+    let compiler = Compiler::new().unwrap();
+    let mut options = CompileOptions::new().unwrap();
+
+    // my shaders are unvulkanable atm, fix later?
+    options.set_target_env(
+        shaderc::TargetEnv::OpenGL,
+        shaderc::EnvVersion::OpenGL4_5 as u32,
+    );
+
+
+    // This emits OpLine / OpSource into the SPIR-V binary
+    options.set_generate_debug_info();
+    // Keep it off so debug info isn't stripped
+    options.set_optimization_level(shaderc::OptimizationLevel::Zero);
+
+    let artifact = compiler
+        .compile_into_spirv(src, kind, name, "main", Some(&options))
+        .expect("GLSL → SPIR-V compilation failed");
+
+    artifact.as_binary().to_vec()
+}
+
+fn create_compute_program(gl: &gl::Gl, spirv: &[u32]) -> GLuint {
+    unsafe {
+        let shader = gl.CreateShader(gl::COMPUTE_SHADER);
+
+        // Upload SPIR-V binary
+        gl.ShaderBinary(
+            1,
+            &shader,
+            gl::SHADER_BINARY_FORMAT_SPIR_V,
+            spirv.as_ptr() as *const _,
+            (spirv.len() * std::mem::size_of::<u32>()) as GLsizei,
+        );
+
+        // Specialize (replaces glCompileShader for SPIR-V)
+        let entry_point = b"main\0";
+        gl.SpecializeShader(
+            shader,
+            entry_point.as_ptr() as *const GLchar,
+            0,       // no specialization constants
+            std::ptr::null(),
+            std::ptr::null(),
+        );
+
+        // Check for errors
+        let mut status = 0;
+        gl.GetShaderiv(shader, gl::COMPILE_STATUS, &mut status);
+        if status == 0 {
+            let mut len = 0;
+            gl.GetShaderiv(shader, gl::INFO_LOG_LENGTH, &mut len);
+            let mut buf = vec![0u8; len as usize];
+            gl.GetShaderInfoLog(shader, len, std::ptr::null_mut(), buf.as_mut_ptr() as *mut GLchar);
+            panic!("Shader specialization failed: {}", String::from_utf8_lossy(&buf));
+        }
+
+        let program = gl.CreateProgram();
+        gl.AttachShader(program, shader);
+        gl.LinkProgram(program);
+        gl.DeleteShader(shader);
+        program
+    }
+}
+
+
+
+fn get_shader_source(
+    path: &Path, with_nul: bool
 ) -> String {
     let mut shader_source: String = fs::read_to_string("assets/common.glsl").unwrap();
     shader_source.push_str("\n");
     shader_source.push_str(&fs::read_to_string(path).unwrap());
     shader_source = shader_source.replace(char::from(0),"");
-    shader_source.push('\0');
+    if(with_nul) {
+        shader_source.push('\0');
+    }
     return shader_source;
 }
 

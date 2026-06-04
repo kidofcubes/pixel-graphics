@@ -18,9 +18,9 @@ use crate::scene::{get_scene_data, PixelData};
 // Tile constants — must match assets/common.glsl
 pub const TILE_W: u32 = 16;
 pub const TILE_H: u32 = 16;
-pub const MAX_RAYS: usize = 800_0000;
-pub const RAYS_PER_FRAME: usize = 640_0000;
-pub const SUN_RAYS_PER_FRAME: usize = 160_0000;
+pub const MAX_RAYS: usize = 800_000;
+pub const RAYS_PER_FRAME: usize = 640_000;
+pub const SUN_RAYS_PER_FRAME: usize = 160_000;
 pub const MAX_WAVES: usize = 64;
 
 #[repr(C)]
@@ -35,19 +35,20 @@ pub struct RayGpu {
 #[derive(Debug, Eq, PartialEq, Hash, Copy, Clone)]
 enum Bindings {
     Fb0Tex,
-    Scene,
     ComputeAccuR,
     ComputeAccuG,
     ComputeAccuB,
+
+    Scene,
     LightList,
     SortedRays,
     TileStart,
     TileCount,
+    TileWriteCursor,
     QueueA,
     QueueACount,
     QueueB,
     QueueBCount,
-    TileWriteCursor,
 }
 impl Bindings {
     fn get_id(&self) -> String {
@@ -68,15 +69,35 @@ impl Bindings {
             Bindings::TileWriteCursor => "tileWriteCursor",
         }.to_owned()
     }
+    fn get_binding(&self) -> GLuint {
+        match self{
+            Bindings::Fb0Tex => 10,
+            Bindings::ComputeAccuR => 11,
+            Bindings::ComputeAccuG => 12,
+            Bindings::ComputeAccuB => 13,
+
+            Bindings::Scene => 10,
+            Bindings::LightList => 11,
+            Bindings::SortedRays => 12,
+            Bindings::TileStart => 13,
+            Bindings::TileCount => 14,
+            Bindings::TileWriteCursor => 15,
+
+            Bindings::QueueA => 0,          //binded dynamically ping pong
+            Bindings::QueueACount => 0,     //binded dynamically ping pong
+            Bindings::QueueB => 0,          //binded dynamically ping pong
+            Bindings::QueueBCount => 0,     //binded dynamically ping pong
+        }
+    }
 }
 
 // Fixed SSBO binding slots for the ping-pong ray queues. Shaders declare these
 // with explicit `layout(binding = N)` and Rust calls BindBufferBase per wave to
 // swap which physical buffer occupies each role.
-const SLOT_INPUT_QUEUE:  GLuint = 10;
-const SLOT_OUTPUT_QUEUE: GLuint = 11;
-const SLOT_INPUT_COUNT:  GLuint = 12;
-const SLOT_OUTPUT_COUNT: GLuint = 13;
+const SLOT_INPUT_QUEUE:  GLuint = 16;
+const SLOT_INPUT_COUNT:  GLuint = 17;
+const SLOT_OUTPUT_COUNT: GLuint = 18;
+const SLOT_OUTPUT_QUEUE: GLuint = 19;
 
 
 #[derive(Debug, Eq, PartialEq, Hash, Copy, Clone)]
@@ -95,6 +116,16 @@ impl Uniform {
             Uniform::TimeOfDay => "timeOfDay",
             Uniform::SunMode => "sunMode",
             Uniform::RealTime => "realTime",
+        }
+    }
+    
+    fn get_location(&self) -> GLuint {
+        match self{
+            Uniform::Frame => 10,
+            Uniform::LightCount => 11,
+            Uniform::TimeOfDay => 12,
+            Uniform::SunMode => 13,
+            Uniform::RealTime => 14,
         }
     }
 }
@@ -330,11 +361,12 @@ impl Renderer {
 
             // === wavefront compute programs ===
             let load_compute = |path: &str| -> GLuint {
-                let sh = glutils::create_shader(&gl, gl::COMPUTE_SHADER, &PathBuf::from(path));
-                let p = gl.CreateProgram();
-                gl.AttachShader(p, sh);
-                gl.LinkProgram(p);
-                p
+                // let sh = glutils::create_shader(&gl, gl::COMPUTE_SHADER, &PathBuf::from(path));
+                // let p = gl.CreateProgram();
+                // gl.AttachShader(p, sh);
+                // gl.LinkProgram(p);
+                // p
+                return glutils::create_compute_shader_as_program(&gl, &PathBuf::from(path));
             };
             programs.insert(Program::TilePass,     load_compute("assets/tile_pass.comp"));
             programs.insert(Program::RayGenerator, load_compute("assets/raygenerator.comp"));

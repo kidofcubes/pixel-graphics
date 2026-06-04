@@ -1,23 +1,23 @@
 layout(local_size_x = 256, local_size_y = 1, local_size_z = 1) in;
 
-uniform int frame;
-uniform int lightCount;
-uniform int sunMode;
-uniform float timeOfDay;
-uniform uint raysToEmit;
+layout(location = FRAME) uniform int frame;
+layout(location = LIGHTCOUNT) uniform int lightCount;
+layout(location = SUNMODE) uniform int sunMode;
+layout(location = TIMEOFDAY) uniform float timeOfDay;
+layout(location = RAYSTOEMIT) uniform uint raysToEmit;
 
-layout(std140) uniform lightList {
+layout(std140, binding = LIGHTLIST) uniform lightList {
     LightPoint light_points[MAX_LIGHTS];
 };
 
-layout(std430) readonly restrict buffer scene {
+layout(std430, binding = SCENE) readonly restrict buffer scene {
     PixelData scene_pixels[];
 };
 
-layout(std430, binding = 11) restrict buffer outputQueue {
+layout(std430, binding = OUTPUTQUEUE) restrict buffer outputQueue {
     Ray q_out[];
 };
-layout(std430, binding = 13) restrict buffer outputCount {
+layout(std430, binding = OUTPUTCOUNT) restrict buffer outputCount {
     uint cnt_out;
 };
 

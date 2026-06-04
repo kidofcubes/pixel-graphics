@@ -1,35 +1,35 @@
 layout(local_size_x = 256, local_size_y = 1, local_size_z = 1) in;
 
-uniform int lightCount;
-uniform int frame;
+layout(location = LIGHTCOUNT)   uniform int lightCount;
+layout(location = FRAME)        uniform int frame;
 
 #define COMPUTE_MULTIPLIER_PORPORTION (float(COMPUTE_MULTIPLIER) / float(max(lightCount,1)))
 
-layout (r32ui, binding = 0) uniform uimage2D computeAccuR;
-layout (r32ui, binding = 1) uniform uimage2D computeAccuG;
-layout (r32ui, binding = 2) uniform uimage2D computeAccuB;
+layout (r32ui, binding = COMPUTEACCUR) uniform uimage2D computeAccuR;
+layout (r32ui, binding = COMPUTEACCUG) uniform uimage2D computeAccuG;
+layout (r32ui, binding = COMPUTEACCUB) uniform uimage2D computeAccuB;
 
-layout (std430) readonly restrict buffer scene {
+layout (std430, binding = SCENE) readonly restrict buffer scene {
     PixelData scene_pixels[];
 };
 
-layout (std430) readonly restrict buffer sortedRays {
+layout (std430, binding = SORTEDRAYS) readonly restrict buffer sortedRays {
     Ray rays_in[];
 };
 
-layout (std430) readonly restrict buffer tileStart {
+layout (std430, binding = TILESTART) readonly restrict buffer tileStart {
     uint tile_start[];
 };
 
-layout (std430) readonly restrict buffer tileCount {
+layout (std430, binding = TILECOUNT) readonly restrict buffer tileCount {
     uint tile_count[];
 };
 
-layout (std430, binding = 11) restrict buffer outputQueue {
+layout (std430, binding = OUTPUTQUEUE) restrict buffer outputQueue {
     Ray queue_b[];
 };
 
-layout (std430, binding = 13) restrict buffer outputCount {
+layout (std430, binding = OUTPUTCOUNT) restrict buffer outputCount {
     uint queue_b_count;
 };
 
