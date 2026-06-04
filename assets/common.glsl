@@ -12,25 +12,26 @@
 
 
 //UNIFORM LOCATIONS
-#define FRAME           10
-#define LIGHTCOUNT      11
-#define TIMEOFDAY       12
-#define SUNMODE         13
-#define REALTIME        14
-#define RAYSTOEMIT      15
+#define FRAME           0
+#define LIGHTCOUNT      1
+#define TIMEOFDAY       2
+#define SUNMODE         3
+#define REALTIME        4
+#define RAYSTOEMIT      5
 
 
 //SSBO BINDINGS
-#define SCENE           10
-#define LIGHTLIST       11
-#define SORTEDRAYS      12
-#define TILESTART       13
-#define TILECOUNT       14
-#define TILEWRITECURSOR 15
-#define INPUTQUEUE      16
-#define INPUTCOUNT      17
-#define OUTPUTQUEUE     18
-#define OUTPUTCOUNT     19
+#define SCENE           0
+#define LIGHTLIST       1
+#define SORTEDRAYS      2
+#define TILESTART       3
+#define TILECOUNT       4
+#define TILEWRITECURSOR 5
+
+#define INPUTQUEUE      6
+#define INPUTCOUNT      7
+#define OUTPUTQUEUE     8
+#define OUTPUTCOUNT     9
 
 //LAYOUT INDEXES END
 

@@ -76,12 +76,12 @@ impl Bindings {
             Bindings::ComputeAccuG => 2,
             Bindings::ComputeAccuB => 3,
 
-            Bindings::Scene => 10,
-            Bindings::LightList => 11,
-            Bindings::SortedRays => 12,
-            Bindings::TileStart => 13,
-            Bindings::TileCount => 14,
-            Bindings::TileWriteCursor => 15,
+            Bindings::Scene => 0,
+            Bindings::LightList => 1,
+            Bindings::SortedRays => 2,
+            Bindings::TileStart => 3,
+            Bindings::TileCount => 4,
+            Bindings::TileWriteCursor => 5,
 
             Bindings::QueueA => 0,          //binded dynamically ping pong
             Bindings::QueueACount => 0,     //binded dynamically ping pong
@@ -94,10 +94,10 @@ impl Bindings {
 // Fixed SSBO binding slots for the ping-pong ray queues. Shaders declare these
 // with explicit `layout(binding = N)` and Rust calls BindBufferBase per wave to
 // swap which physical buffer occupies each role.
-const SLOT_INPUT_QUEUE:  GLuint = 16;
-const SLOT_INPUT_COUNT:  GLuint = 17;
-const SLOT_OUTPUT_COUNT: GLuint = 18;
-const SLOT_OUTPUT_QUEUE: GLuint = 19;
+const SLOT_INPUT_QUEUE:  GLuint = 6;
+const SLOT_INPUT_COUNT:  GLuint = 7;
+const SLOT_OUTPUT_QUEUE: GLuint = 8;
+const SLOT_OUTPUT_COUNT: GLuint = 9;
 
 
 #[derive(Debug, Eq, PartialEq, Hash, Copy, Clone)]
@@ -123,12 +123,12 @@ impl Uniform {
 
     fn get_location(&self) -> GLuint {
         match self{
-            Uniform::Frame => 10,
-            Uniform::LightCount => 11,
-            Uniform::TimeOfDay => 12,
-            Uniform::SunMode => 13,
-            Uniform::RealTime => 14,
-            Uniform::RaysToEmit => 15,
+            Uniform::Frame => 0,
+            Uniform::LightCount => 1,
+            Uniform::TimeOfDay => 2,
+            Uniform::SunMode => 3,
+            Uniform::RealTime => 4,
+            Uniform::RaysToEmit => 5,
         }
     }
 }
@@ -177,6 +177,7 @@ pub struct Renderer {
     fb0: gl::types::GLuint,
     gl: gl::Gl,
     programs: HashMap<Program, GLuint>,
+    program_uniforms: HashMap<Program, std::collections::HashSet<Uniform>>,
     bindings: HashMap<String, (Bindings,GLuint)>,
     frame: i32,
     last_frame: u64,
@@ -420,6 +421,20 @@ impl Renderer {
                 }
             }
 
+            // For each program, record which named uniforms it actually declares.
+            // ProgramUniform* with a location not present in the target program is
+            // a GL error, so we filter on this set when broadcasting uniforms.
+            let mut program_uniforms: HashMap<Program, std::collections::HashSet<Uniform>> = HashMap::new();
+            for (program_name, program) in programs.iter() {
+                let mut set = std::collections::HashSet::new();
+                for u in [Uniform::Frame, Uniform::LightCount, Uniform::TimeOfDay, Uniform::SunMode, Uniform::RealTime, Uniform::RaysToEmit] {
+                    let cname = CString::new(u.get_id()).unwrap();
+                    let loc = gl.GetUniformLocation(*program, cname.as_ptr());
+                    if loc != -1 { set.insert(u); }
+                }
+                program_uniforms.insert(*program_name, set);
+            }
+
             println!("the original3 is {}",gl.GetError());
 
             let pixel_data = get_scene_data(&scene, 0.0);
@@ -428,6 +443,7 @@ impl Renderer {
 
             Self {
                 programs,
+                program_uniforms,
                 bindings: bindings,
                 vao,
                 fb0,
@@ -454,20 +470,26 @@ impl Renderer {
 
     pub unsafe fn update_uniformi(&self, uniform: &Uniform, value: i32){
         let loc = uniform.get_location() as GLint;
-        for (_, program) in self.programs.iter() {
-            self.gl.ProgramUniform1i(*program, loc, value);
+        for (name, program) in self.programs.iter() {
+            if self.program_uniforms.get(name).map_or(false, |s| s.contains(uniform)) {
+                self.gl.ProgramUniform1i(*program, loc, value);
+            }
         }
     }
     pub unsafe fn update_uniformf(&self, uniform: &Uniform, value: f32){
         let loc = uniform.get_location() as GLint;
-        for (_, program) in self.programs.iter() {
-            self.gl.ProgramUniform1f(*program, loc, value);
+        for (name, program) in self.programs.iter() {
+            if self.program_uniforms.get(name).map_or(false, |s| s.contains(uniform)) {
+                self.gl.ProgramUniform1f(*program, loc, value);
+            }
         }
     }
     pub unsafe fn update_uniformu(&self, uniform: &Uniform, value: u32){
         let loc = uniform.get_location() as GLint;
-        for (_, program) in self.programs.iter() {
-            self.gl.ProgramUniform1ui(*program, loc, value);
+        for (name, program) in self.programs.iter() {
+            if self.program_uniforms.get(name).map_or(false, |s| s.contains(uniform)) {
+                self.gl.ProgramUniform1ui(*program, loc, value);
+            }
         }
     }
 
