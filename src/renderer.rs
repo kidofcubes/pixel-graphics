@@ -71,10 +71,10 @@ impl Bindings {
     }
     fn get_binding(&self) -> GLuint {
         match self{
-            Bindings::Fb0Tex => 10,
-            Bindings::ComputeAccuR => 11,
-            Bindings::ComputeAccuG => 12,
-            Bindings::ComputeAccuB => 13,
+            Bindings::Fb0Tex => 0,
+            Bindings::ComputeAccuR => 1,
+            Bindings::ComputeAccuG => 2,
+            Bindings::ComputeAccuB => 3,
 
             Bindings::Scene => 10,
             Bindings::LightList => 11,
@@ -107,6 +107,7 @@ pub enum Uniform {
     TimeOfDay,
     SunMode,
     RealTime,
+    RaysToEmit,
 }
 impl Uniform {
     fn get_id(&self) -> &str {
@@ -116,9 +117,10 @@ impl Uniform {
             Uniform::TimeOfDay => "timeOfDay",
             Uniform::SunMode => "sunMode",
             Uniform::RealTime => "realTime",
+            Uniform::RaysToEmit => "raysToEmit",
         }
     }
-    
+
     fn get_location(&self) -> GLuint {
         match self{
             Uniform::Frame => 10,
@@ -126,6 +128,7 @@ impl Uniform {
             Uniform::TimeOfDay => 12,
             Uniform::SunMode => 13,
             Uniform::RealTime => 14,
+            Uniform::RaysToEmit => 15,
         }
     }
 }
@@ -174,7 +177,6 @@ pub struct Renderer {
     fb0: gl::types::GLuint,
     gl: gl::Gl,
     programs: HashMap<Program, GLuint>,
-    uniform_locations: HashMap<Program, HashMap<Uniform, GLint>>,
     bindings: HashMap<String, (Bindings,GLuint)>,
     frame: i32,
     last_frame: u64,
@@ -386,101 +388,36 @@ impl Renderer {
 
             println!("the original2.2 is {}",gl.GetError());
 
-
-            let mut binded_bindings = HashMap::new();
-
-            let mut texture_unit: GLuint = 0;
-            let mut image_unit: GLuint = 0;
-            let mut buffer_base_unit: GLuint = 0;
-            let mut shader_storage_block_unit: GLuint = 0;
-
-            for (unit, value) in bindings.iter().enumerate() {
-                let mut types = HashMap::new();
-                match value.1.0 {
-                    Bindings::Fb0Tex | Bindings::ComputeAccuR | Bindings::ComputeAccuG | Bindings::ComputeAccuB => {
-                        gl.BindImageTexture(texture_unit, value.1.1, 0, gl::FALSE, 0, gl::READ_WRITE, 0+gl::R32UI);
-                        gl.BindTextureUnit(texture_unit, value.1.1);
-                        gl.BindSampler(texture_unit, nearest_sampler);
-                        types.insert(gl::TEXTURE_2D, texture_unit);
-                        texture_unit += 1;
-                    },
-                    _ => {}
-                }
-                match value.1.0 {
+            // Bind every resource to its hardcoded slot from Bindings::get_binding().
+            // The shaders declare `layout(binding = N)` against the matching constant
+            // in common.glsl, so no reflection / per-program patching is needed.
+            for (_, value) in bindings.iter() {
+                let kind = value.0;
+                let id = value.1;
+                let slot = kind.get_binding();
+                match kind {
+                    Bindings::Fb0Tex => {
+                        // Sampler-only access from fragment shaders.
+                        gl.BindTextureUnit(slot, id);
+                        gl.BindSampler(slot, nearest_sampler);
+                    }
+                    Bindings::ComputeAccuR | Bindings::ComputeAccuG | Bindings::ComputeAccuB => {
+                        // Used as image2D in compute + accumulation passes.
+                        gl.BindImageTexture(slot, id, 0, gl::FALSE, 0, gl::READ_WRITE, gl::R32UI);
+                    }
                     Bindings::LightList => {
-                        gl.BindBufferBase(gl::UNIFORM_BUFFER, buffer_base_unit, value.1.1);
-                        types.insert(gl::UNIFORM_BLOCK, buffer_base_unit);
-                        buffer_base_unit+=1;
-                    },
-                    _ => {}
-                }
-                match value.1.0 {
+                        gl.BindBufferBase(gl::UNIFORM_BUFFER, slot, id);
+                    }
                     Bindings::Scene
                     | Bindings::SortedRays
                     | Bindings::TileStart
                     | Bindings::TileCount
                     | Bindings::TileWriteCursor => {
-                        gl.BindBufferBase(gl::SHADER_STORAGE_BUFFER, shader_storage_block_unit, value.1.1);
-                        types.insert(gl::SHADER_STORAGE_BLOCK, shader_storage_block_unit);
-                        shader_storage_block_unit+=1;
-                    },
-                    // QueueA/B and their counts use fixed binding slots (SLOT_*_QUEUE/COUNT)
-                    // managed by per-wave BindBufferBase calls below; skip them here.
-                    Bindings::QueueA | Bindings::QueueB | Bindings::QueueACount | Bindings::QueueBCount => {},
-                    _ => {}
-                }
-                println!("BINDED {:?} to {:?}",value.1.0, types);
-                binded_bindings.insert(value.0.clone(), types);
-            }
-
-
-
-            let mut uniform_locations = HashMap::new();
-
-            for (program_name,program) in programs.iter() {
-                println!("=========CURRENTLY ON PROGRAM {:?} WHO IS AT {}",program_name,program);
-                gl.UseProgram(*program);
-                for (id, value) in binded_bindings.iter() {
-                    for (gl_type, binding_point) in value.iter() {
-                        // println!("the {} is in {:?} at {}", id, program_name, *binding_point);
-                        match *gl_type {
-                            gl::TEXTURE_2D | gl::IMAGE_2D => {
-                                let loc = gl.GetUniformLocation(*program, CString::new(id.as_bytes().to_vec()).unwrap().as_ptr());
-                                if (loc != -1) {
-                                    println!("found a {:?} in program {:?} at location {}", id, program_name, loc);
-                                    gl.Uniform1i(loc, *binding_point as GLint);
-                                }else{
-                                    // println!("the {} is NOT in {:?}", id, program_name);
-                                }
-                            },
-                            gl::UNIFORM_BLOCK | gl::SHADER_STORAGE_BLOCK => {
-                                let loc = gl.GetProgramResourceIndex(*program, *gl_type, CString::new(id.as_bytes().to_vec()).unwrap().as_ptr());
-                                if (loc != gl::INVALID_INDEX) {
-                                    println!("found a {:?} in program {:?} at location {}", id, program_name, loc);
-                                    match *gl_type {
-                                        gl::UNIFORM_BLOCK => {gl.UniformBlockBinding(*program, loc, *binding_point)},
-                                        gl::SHADER_STORAGE_BLOCK => {gl.ShaderStorageBlockBinding(*program, loc, *binding_point)}
-                                        _ => {panic!("not implemented for {:?} ???", gl_type)}
-                                    }
-                                }
-                            },
-                            _ => {panic!("not implemented for {:?}", gl_type)}
-                        }
+                        gl.BindBufferBase(gl::SHADER_STORAGE_BUFFER, slot, id);
                     }
+                    // Ping-pong queues bound per wave via SLOT_* constants.
+                    Bindings::QueueA | Bindings::QueueB | Bindings::QueueACount | Bindings::QueueBCount => {}
                 }
-
-
-                let mut uniforms = HashMap::new();
-                for uniform in [Uniform::Frame, Uniform::LightCount, Uniform::RealTime, Uniform::SunMode, Uniform::TimeOfDay] {
-                    // gl.GetUniforms
-                    // set this up to string and all uniforms later maybe idk
-                    let loc = gl.GetUniformLocation(*program, CString::new(uniform.get_id().clone().as_bytes().to_vec()).unwrap().as_ptr());
-                    if(loc != -1) {
-                        println!("found a {:?} in program {:?} at location {}", uniform.get_id(), program_name, loc);
-                        uniforms.insert(uniform, loc as GLint);
-                    }
-                }
-                uniform_locations.insert(*program_name, uniforms);
             }
 
             println!("the original3 is {}",gl.GetError());
@@ -491,7 +428,6 @@ impl Renderer {
 
             Self {
                 programs,
-                uniform_locations,
                 bindings: bindings,
                 vao,
                 fb0,
@@ -512,31 +448,26 @@ impl Renderer {
 
 
     pub unsafe fn update_uniforms(&self, light_count: u32){
-        for (program_name, program) in self.programs.iter() {
-            self.gl.UseProgram(*program);
-            if let Some(loc) = self.uniform_locations.get(program_name).unwrap().get(&Uniform::Frame) {
-                self.gl.Uniform1i(*loc, self.frame);
-            }
-            if let Some(loc) = self.uniform_locations.get(program_name).unwrap().get(&Uniform::LightCount) {
-                self.gl.Uniform1i(*loc, light_count as i32);
-            }
-        }
+        self.update_uniformi(&Uniform::Frame, self.frame);
+        self.update_uniformi(&Uniform::LightCount, light_count as i32);
     }
 
     pub unsafe fn update_uniformi(&self, uniform: &Uniform, value: i32){
-        for (program_name, program) in self.programs.iter() {
-            self.gl.UseProgram(*program);
-            if let Some(loc) = self.uniform_locations.get(program_name).unwrap().get(uniform) {
-                self.gl.Uniform1i(*loc, value);
-            }
+        let loc = uniform.get_location() as GLint;
+        for (_, program) in self.programs.iter() {
+            self.gl.ProgramUniform1i(*program, loc, value);
         }
     }
     pub unsafe fn update_uniformf(&self, uniform: &Uniform, value: f32){
-        for (program_name, program) in self.programs.iter() {
-            self.gl.UseProgram(*program);
-            if let Some(loc) = self.uniform_locations.get(program_name).unwrap().get(uniform) {
-                self.gl.Uniform1f(*loc, value);
-            }
+        let loc = uniform.get_location() as GLint;
+        for (_, program) in self.programs.iter() {
+            self.gl.ProgramUniform1f(*program, loc, value);
+        }
+    }
+    pub unsafe fn update_uniformu(&self, uniform: &Uniform, value: u32){
+        let loc = uniform.get_location() as GLint;
+        for (_, program) in self.programs.iter() {
+            self.gl.ProgramUniform1ui(*program, loc, value);
         }
     }
 
@@ -627,15 +558,6 @@ impl Renderer {
         self.gl.BindBuffer(gl::SHADER_STORAGE_BUFFER, 0);
     }
 
-    /// Set a `uint` uniform on `program` without binding it (DSA).
-    unsafe fn set_uniform_u(&self, program: GLuint, name: &str, value: u32) {
-        let cname = CString::new(name).unwrap();
-        let loc = self.gl.GetUniformLocation(program, cname.as_ptr());
-        if loc != -1 {
-            self.gl.ProgramUniform1ui(program, loc, value);
-        }
-    }
-
     /// Bind a buffer to a fixed SSBO slot.
     unsafe fn bind_slot(&self, slot: GLuint, buf: GLuint) {
         self.gl.BindBufferBase(gl::SHADER_STORAGE_BUFFER, slot, buf);
@@ -664,21 +586,19 @@ impl Renderer {
         self.gl.MemoryBarrier(gl::BUFFER_UPDATE_BARRIER_BIT | gl::SHADER_STORAGE_BARRIER_BIT);
 
         let raygen_prog = *self.programs.get(&Program::RayGenerator).unwrap();
+        self.gl.UseProgram(raygen_prog);
 
-        // Emissive rays (sunMode = 0). update_uniformi loops and clobbers the active
-        // program, so re-UseProgram immediately before dispatch.
+        // Emissive rays (sunMode = 0).
         self.update_uniformi(&Uniform::SunMode, 0);
         let emissive_rays = RAYS_PER_FRAME as u32;
-        self.set_uniform_u(raygen_prog, "raysToEmit", emissive_rays);
-        self.gl.UseProgram(raygen_prog);
+        self.update_uniformu(&Uniform::RaysToEmit, emissive_rays);
         let wgs = (emissive_rays + 255) / 256;
         self.gl.DispatchCompute(wgs, 1, 1);
 
         // Sun rays (sunMode = 1).
         self.update_uniformi(&Uniform::SunMode, 1);
         let sun_rays = SUN_RAYS_PER_FRAME as u32;
-        self.set_uniform_u(raygen_prog, "raysToEmit", sun_rays);
-        self.gl.UseProgram(raygen_prog);
+        self.update_uniformu(&Uniform::RaysToEmit, sun_rays);
         let wgs = (sun_rays + 255) / 256;
         self.gl.DispatchCompute(wgs, 1, 1);
 

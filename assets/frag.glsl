@@ -3,7 +3,7 @@ in vec2 texcoords;
 layout(location = 0) out vec4 pixelColor;
 //uniform usampler2D scene;
 //uniform usampler2D computeAccu; // integer hit count
-uniform sampler2D fb0tex;
+layout(binding = FB0TEX) uniform sampler2D fb0tex;
 
 void main() {
     // gl_FragColor = vec4(v_color, 1.0);

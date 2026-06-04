@@ -1,17 +1,17 @@
 
 // Accumulation buffers (read-only)
-layout(r32ui, binding = 0) uniform highp uimage2D computeAccuR;
-layout(r32ui, binding = 1) uniform highp uimage2D computeAccuG;
-layout(r32ui, binding = 2) uniform highp uimage2D computeAccuB;
+layout(r32ui, binding = COMPUTEACCUR) uniform highp uimage2D computeAccuR;
+layout(r32ui, binding = COMPUTEACCUG) uniform highp uimage2D computeAccuG;
+layout(r32ui, binding = COMPUTEACCUB) uniform highp uimage2D computeAccuB;
 
 // --- Uniforms from Host ---
 layout(location = FRAME)        uniform int frame;
 
 // Loopback Buffer Read (Previous Frame's accumulated color)
-uniform sampler2D fb0tex;
+layout(binding = FB0TEX) uniform sampler2D fb0tex;
 
 // --- Scene Data (Layouts match your provided code) ---
-layout (std430) buffer scene
+layout (std430, binding = SCENE) buffer scene
 {
     PixelData scene_pixels[]; // The array of all pixels in your scene
 };

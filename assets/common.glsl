@@ -5,10 +5,10 @@
 //LAYOUT INDEXES
 
 //IMAGE BINDINGS
-#define FB0TEX          10
-#define COMPUTEACCUR    11
-#define COMPUTEACCUG    12
-#define COMPUTEACCUB    13
+#define FB0TEX          0
+#define COMPUTEACCUR    1
+#define COMPUTEACCUG    2
+#define COMPUTEACCUB    3
 
 
 //UNIFORM LOCATIONS
