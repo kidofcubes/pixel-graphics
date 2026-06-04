@@ -18,9 +18,9 @@ use crate::scene::{get_scene_data, PixelData};
 // Tile constants — must match assets/common.glsl
 pub const TILE_W: u32 = 16;
 pub const TILE_H: u32 = 16;
-pub const MAX_RAYS: usize = 800_000;
-pub const RAYS_PER_FRAME: usize = 640_000;
-pub const SUN_RAYS_PER_FRAME: usize = 160_000;
+pub const MAX_RAYS: usize = 800_0000;
+pub const RAYS_PER_FRAME: usize = 640_0000;
+pub const SUN_RAYS_PER_FRAME: usize = 160_0000;
 pub const MAX_WAVES: usize = 64;
 
 #[repr(C)]
@@ -513,10 +513,10 @@ impl Renderer {
         let fps = 1000.0/((new_time-self.last_frame) as f64);
         println!("fps is {:?} frame is {:?}",fps, self.frame);
         self.last_frame=new_time;
-        if(fps <= 120.0){
+        //if(fps <= 120.0){
             self.draw_with_clear_color(0.0, 0.0, 0.0, 0.7);
             self.frame=self.frame+1;
-        }
+        //}
     }
 
     pub fn draw_with_clear_color(
