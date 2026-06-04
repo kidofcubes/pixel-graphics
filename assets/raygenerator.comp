@@ -55,7 +55,7 @@ void main() {
         vec2 pos = vec2(lp.x + jx, lp.y + jy);
         float theta = noise2(seed, 4.0) * 2.0 * PI;
         vec2 dir = vec2(cos(theta), sin(theta));
-        vec3 energy = px.color * px.emissiveness;
+        vec3 energy = px.color * px.emissiveness * (float(lightCount) / float(raysToEmit));
         append_ray(pos, dir, energy);
     } else {
         // Sun/moon rays from outside the image, marching inward.
@@ -89,7 +89,7 @@ void main() {
         if (initPos.x < 0.0 || initPos.x >= float(RESOLUTIONX) ||
             initPos.y < 0.0 || initPos.y >= float(RESOLUTIONY)) return;
 
-        vec3 currentLight = vec3(1.0, 0.9, 0.6) * 300.0;
+        vec3 currentLight = vec3(1.0, 0.9, 0.6) * 30000000.0  / float(raysToEmit);
         append_ray(initPos, dir, currentLight);
     }
 }

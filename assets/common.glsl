@@ -28,8 +28,7 @@ float linearFalloff = (1.0/
 #define TILES_PER_COL int((RESOLUTIONY + TILE_H - 1) / TILE_H)
 #define TILE_COUNT (TILES_PER_ROW * TILES_PER_COL)
 #define TILE_PIXELS (TILE_W * TILE_H)
-#define MAX_RAYS 80000
-#define MAX_RAYS_PER_TILE_PER_WAVE 512
+#define MAX_RAYS 800000
 
 uint tile_id_of(vec2 p) {
     int tx = int(p.x) / TILE_W;

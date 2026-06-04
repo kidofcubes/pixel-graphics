@@ -18,10 +18,10 @@ use crate::scene::{get_scene_data, PixelData};
 // Tile constants — must match assets/common.glsl
 pub const TILE_W: u32 = 16;
 pub const TILE_H: u32 = 16;
-pub const MAX_RAYS: usize = 80_000;
-pub const RAYS_PER_FRAME: usize = 64_000;
-pub const SUN_RAYS_PER_FRAME: usize = 16_000;
-pub const MAX_WAVES: usize = 24;
+pub const MAX_RAYS: usize = 800_000;
+pub const RAYS_PER_FRAME: usize = 640_000;
+pub const SUN_RAYS_PER_FRAME: usize = 160_000;
+pub const MAX_WAVES: usize = 64;
 
 #[repr(C)]
 #[derive(Debug, Clone, Copy, Default)]
@@ -109,6 +109,7 @@ enum Program {
     Count,
     Scan,
     Scatter,
+    ClampCount,
     FragTest,
     Accumulation,
 }
@@ -340,6 +341,7 @@ impl Renderer {
             programs.insert(Program::Count,        load_compute("assets/count.comp"));
             programs.insert(Program::Scan,         load_compute("assets/scan.comp"));
             programs.insert(Program::Scatter,      load_compute("assets/scatter.comp"));
+            programs.insert(Program::ClampCount,   load_compute("assets/clamp_count.comp"));
 
 
 
@@ -608,6 +610,12 @@ impl Renderer {
     }
 
     unsafe fn run_wavefront_frame(&self) {
+        // Cross-frame persistence assumes the final wave's output lands back in queueA.
+        // Wave i has input=A,output=B when i is even; with an even MAX_WAVES the last
+        // wave (MAX_WAVES-1, odd) outputs to queueA. If this ever becomes odd, swap
+        // the queue IDs at end of frame instead of zeroing.
+        debug_assert!(MAX_WAVES % 2 == 0, "MAX_WAVES must be even for cross-frame ray persistence");
+
         let queue_a_id   = self.bindings.get(&Bindings::QueueA.get_id()).unwrap().1;
         let queue_a_cnt  = self.bindings.get(&Bindings::QueueACount.get_id()).unwrap().1;
         let queue_b_id   = self.bindings.get(&Bindings::QueueB.get_id()).unwrap().1;
@@ -615,9 +623,10 @@ impl Renderer {
         let tile_count_id = self.bindings.get(&Bindings::TileCount.get_id()).unwrap().1;
 
         // ------------------------------------------------------------------
-        // Ray emission: write into queue A.
+        // Ray emission: append into queue A on top of any carryover from the
+        // previous frame. queueA_count is NOT zeroed here — raygenerator's
+        // atomicAdd extends the existing count.
         // ------------------------------------------------------------------
-        self.zero_ssbo(queue_a_cnt);
         self.bind_slot(SLOT_OUTPUT_QUEUE, queue_a_id);
         self.bind_slot(SLOT_OUTPUT_COUNT, queue_a_cnt);
         self.gl.MemoryBarrier(gl::BUFFER_UPDATE_BARRIER_BIT | gl::SHADER_STORAGE_BARRIER_BIT);
@@ -641,6 +650,14 @@ impl Renderer {
         let wgs = (sun_rays + 255) / 256;
         self.gl.DispatchCompute(wgs, 1, 1);
 
+        self.gl.MemoryBarrier(gl::SHADER_STORAGE_BARRIER_BIT);
+
+        // Clamp queue_a_count to MAX_RAYS. Raygenerator's slot check stops writes
+        // past MAX_RAYS but the atomic counter keeps growing — left unclamped,
+        // count.comp/scatter.comp would iterate over stale slots.
+        let clamp_prog = *self.programs.get(&Program::ClampCount).unwrap();
+        self.gl.UseProgram(clamp_prog);
+        self.gl.DispatchCompute(1, 1, 1);
         self.gl.MemoryBarrier(gl::SHADER_STORAGE_BARRIER_BIT);
 
         // ------------------------------------------------------------------

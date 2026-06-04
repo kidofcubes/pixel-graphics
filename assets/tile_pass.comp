@@ -37,6 +37,8 @@ shared uint accum_r[TILE_PIXELS];
 shared uint accum_g[TILE_PIXELS];
 shared uint accum_b[TILE_PIXELS];
 
+#define MAX_RAYS_PER_TILE_PER_WAVE 51200000
+
 void emit_to_queue_b(vec2 pos, vec2 dir, vec3 energy, ivec2 coord) {
     if (max(max(energy.x, energy.y), energy.z) <= 0.00001) return;
     vec2 emit_pos = pos;
@@ -204,7 +206,8 @@ void main() {
 
     if (count > 0u) {
         uint start = tile_start[tid];
-        uint n = min(count, uint(MAX_RAYS_PER_TILE_PER_WAVE));
+        //uint n = min(count, uint(MAX_RAYS_PER_TILE_PER_WAVE));
+        uint n = count;
         for (uint r = gl_LocalInvocationID.x; r < n; r += gl_WorkGroupSize.x) {
             Ray ray = rays_in[start + r];
             march_ray(ray, tile_x0, tile_y0);
