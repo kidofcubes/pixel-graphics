@@ -74,7 +74,7 @@ void main() {
         float minPerp = min(min(p0, p1), min(p2, p3));
         float maxPerp = max(max(p0, p1), max(p2, p3));
 
-        vec2 initPos = (perp * mix(minPerp, maxPerp, noise2(float(gid), float(frame) / 1000.0)))
+        vec2 initPos = (perp * mix(minPerp, maxPerp, noise2(float(gid) / 100000.0, float(frame) / 100000.0)))
                      - (dir * (sqrt(float(RESOLUTIONX * RESOLUTIONY)) + 10.0));
         float t0 = (initPos.y - float(RESOLUTIONY - 1)) / -dir.y;
         float t1;

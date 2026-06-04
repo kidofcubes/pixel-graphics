@@ -37,25 +37,21 @@ shared uint accum_r[TILE_PIXELS];
 shared uint accum_g[TILE_PIXELS];
 shared uint accum_b[TILE_PIXELS];
 
-void emit_to_queue_b(vec2 pos, vec2 dir, vec3 energy) {
+void emit_to_queue_b(vec2 pos, vec2 dir, vec3 energy, ivec2 coord) {
     if (max(max(energy.x, energy.y), energy.z) <= 0.00001) return;
-    // Nudge across the cell boundary along dir. After a leftward/downward DDA step,
-    // pos lands exactly on the integer edge that bounds the new cell from above —
-    // which is *outside* the half-open cell [mp, mp+1). Without this nudge,
-    // tile_id_of(pos) and the next wave's mp = int(pos) both snap back to the
-    // tile we just exited, producing an infinite ping-pong for left/down rays.
-    vec2 emit_pos = pos + dir * 1e-3;
+    vec2 emit_pos = pos;
     uint slot = atomicAdd(queue_b_count, 1u);
     if (slot >= MAX_RAYS) return;
     Ray r;
     r.position = emit_pos;
     r.direction = dir;
     r.energy = energy;
-    r.tile_id = tile_id_of(emit_pos);
+    r.tile_id = int(coord.x / TILE_W) + (TILES_PER_ROW * int(coord.y / TILE_H));
     queue_b[slot] = r;
 }
 
 void march_ray(in Ray ray, int tile_x0, int tile_y0) {
+//void march_ray(in Ray ray) {
     vec2 pos = ray.position;
     vec2 dir = ray.direction;
     vec3 energy = ray.energy;
@@ -63,12 +59,22 @@ void march_ray(in Ray ray, int tile_x0, int tile_y0) {
     if (dir.x == 0.0) dir.x = FLT_MIN;
     if (dir.y == 0.0) dir.y = FLT_MIN;
 
-    int stepX = dir.x > 0.0 ? 1 : -1;
-    int stepY = dir.y > 0.0 ? 1 : -1;
+
+    ivec2 mp = ivec2(floor(pos.x), floor(pos.y));
+    if(float(mp.x)==pos.x && dir.x<0){
+        mp.x-=1;
+    }
+    if(float(mp.y)==pos.y && dir.y<0){
+        mp.y-=1;
+    }
+
     int offX  = dir.x > 0.0 ? 1 : 0;
     int offY  = dir.y > 0.0 ? 1 : 0;
+    int stepX = dir.x > 0.0 ? 1 : -1;
+    int stepY = dir.y > 0.0 ? 1 : -1;
 
-    ivec2 mp = ivec2(int(pos.x), int(pos.y));
+    //int tile_x0 = int(mp.x/TILE_W);
+    //int tile_y0 = int(mp.y/TILE_H);
     int tile_x1 = tile_x0 + TILE_W;
     int tile_y1 = tile_y0 + TILE_H;
 
@@ -76,28 +82,41 @@ void march_ray(in Ray ray, int tile_x0, int tile_y0) {
 
     int maxSteps = (TILE_W + TILE_H) * 4;
     for (int s = 0; s < maxSteps; s++) {
-        float dtX = (float(mp.x + offX) - pos.x) / dir.x;
-        float dtY = (float(mp.y + offY) - pos.y) / dir.y;
-        float dt = min(dtX, dtY);
-        bool stepIsX = dtX < dtY;
-        if (stepIsX) { mp.x += stepX; } else { mp.y += stepY; }
-        pos += dir * dt;
-        float pixel_length = length(dir * dt);
-
         // Out of image entirely: drop.
         if (mp.x < 0 || mp.x >= RESOLUTIONX || mp.y < 0 || mp.y >= RESOLUTIONY) return;
 
-        // Exited tile: enqueue to next wave.
-        if (mp.x < tile_x0 || mp.x >= tile_x1 || mp.y < tile_y0 || mp.y >= tile_y1) {
-            emit_to_queue_b(pos, dir, energy);
-            return;
-        }
+        float dtX = (float(mp.x + offX) - pos.x) / dir.x;
+        float dtY = (float(mp.y + offY) - pos.y) / dir.y;
+        bool stepIsX = dtX < dtY;
+        float dt = min(dtX, dtY);
 
+        //UPDATE FLOAT POS
+        if(stepIsX){
+            pos.x = floor(mp.x+stepX)+(1-offX);
+            pos.y += dir.y * dtX;
+        }else{
+            pos.y = floor(mp.y+stepY)+(1-offY);
+            pos.x += dir.x * dtY;
+        }
+        float pixel_length = length(dir * dt);
+
+
+        //GET THE INITIAL PX
         PixelData px = scene_pixels[mp.x + mp.y * RESOLUTIONX];
         int local_idx = (mp.x - tile_x0) + (mp.y - tile_y0) * TILE_W;
 
-        if (px.density < 1.0) {
-            if (px.density == 0.0) continue;
+        if(mp.x%16==0||mp.y%16==0){
+            //            atomicAdd(accum_g[local_idx], uint(10.0));
+            //accum_g[local_idx]=COMPUTE_MULTIPLIER;
+            //accum_r[local_idx]=0;
+            //accum_b[local_idx]=0;
+        }
+
+
+
+        //DO SHIT IN JUST PASSED PIXEL
+
+        if (px.density < 1.0 && px.density>0.0) {
             vec3 scattered = energy * px.scattering * max(px.density,0.0);
             atomicAdd(accum_r[local_idx], uint(scattered.r * COMPUTE_MULTIPLIER_PORPORTION));
             atomicAdd(accum_g[local_idx], uint(scattered.g * COMPUTE_MULTIPLIER_PORPORTION));
@@ -110,7 +129,7 @@ void march_ray(in Ray ray, int tile_x0, int tile_y0) {
             rngState = noise2(rngState, float(s) + pos.x);
             float roll = fract(rngState);
             float maxScat = max(max(px.scattering.x, px.scattering.y), px.scattering.z);
-            if (roll < maxScat * px.density * pixel_length) {
+            if (roll < maxScat * px.density * pixel_length&&false) {
                 float g = 0.75;
                 float newAng = sampleBiasedAngle(atan(dir.y, dir.x), g, noise3(rngState, pos.x, pos.y));
                 dir = vec2(cos(newAng), sin(newAng));
@@ -121,37 +140,46 @@ void march_ray(in Ray ray, int tile_x0, int tile_y0) {
                 offX  = dir.x > 0.0 ? 1 : 0;
                 offY  = dir.y > 0.0 ? 1 : 0;
             }
-            continue;
+        } else if(px.density>0.0){
+
+            // Surface hit
+            vec2 normal = stepIsX ? vec2(-float(stepX), 0.0) : vec2(0.0, -float(stepY));
+            float reflChance = px.reflectiveness;
+            float transChance = px.transmission;
+            vec3 diffuseColor = mix(px.color, vec3(0.0), px.metallic);
+            vec3 absorbed = energy * diffuseColor;
+            atomicAdd(accum_r[local_idx], uint(absorbed.r * pixel_length * COMPUTE_MULTIPLIER_PORPORTION));
+            atomicAdd(accum_g[local_idx], uint(absorbed.g * pixel_length * COMPUTE_MULTIPLIER_PORPORTION));
+            atomicAdd(accum_b[local_idx], uint(absorbed.b * pixel_length * COMPUTE_MULTIPLIER_PORPORTION));
+
+            rngState = noise2(rngState, float(s) + pos.x);
+            float roll = rngState;
+            if (roll < reflChance) {
+                vec2 refDir = reflect(dir, normal);
+                float jitter = (noise2vec(vec2(rngState, float(s) + 1.0)) - 0.5) * px.roughness * PI;
+                dir = rotate2d(refDir, jitter);
+                if (dot(dir, normal) < 0.0) dir = reflect(dir, normal);
+                vec3 specularColor = mix(vec3(1.0), px.color, px.metallic);
+                energy *= specularColor;
+                if (dir.x == 0.0) dir.x = FLT_MIN;
+                if (dir.y == 0.0) dir.y = FLT_MIN;
+                stepX = dir.x > 0.0 ? 1 : -1;
+                stepY = dir.y > 0.0 ? 1 : -1;
+                offX  = dir.x > 0.0 ? 1 : 0;
+                offY  = dir.y > 0.0 ? 1 : 0;
+            } else if (roll < reflChance + transChance) {
+                energy *= 1.0 - ((1.0 - px.transmission) * pixel_length);
+            } else {
+                return;
+            }
         }
 
-        // Surface hit
-        vec2 normal = stepIsX ? vec2(-float(stepX), 0.0) : vec2(0.0, -float(stepY));
-        float reflChance = px.reflectiveness;
-        float transChance = px.transmission;
-        vec3 diffuseColor = mix(px.color, vec3(0.0), px.metallic);
-        vec3 absorbed = energy * diffuseColor;
-        atomicAdd(accum_r[local_idx], uint(absorbed.r * pixel_length * COMPUTE_MULTIPLIER_PORPORTION));
-        atomicAdd(accum_g[local_idx], uint(absorbed.g * pixel_length * COMPUTE_MULTIPLIER_PORPORTION));
-        atomicAdd(accum_b[local_idx], uint(absorbed.b * pixel_length * COMPUTE_MULTIPLIER_PORPORTION));
+        if (stepIsX) { mp.x += stepX; } else { mp.y += stepY; }
 
-        rngState = noise2(rngState, float(s) + pos.x);
-        float roll = rngState;
-        if (roll < reflChance) {
-            vec2 refDir = reflect(dir, normal);
-            float jitter = (noise2vec(vec2(rngState, float(s) + 1.0)) - 0.5) * px.roughness * PI;
-            dir = rotate2d(refDir, jitter);
-            if (dot(dir, normal) < 0.0) dir = reflect(dir, normal);
-            vec3 specularColor = mix(vec3(1.0), px.color, px.metallic);
-            energy *= specularColor;
-            if (dir.x == 0.0) dir.x = FLT_MIN;
-            if (dir.y == 0.0) dir.y = FLT_MIN;
-            stepX = dir.x > 0.0 ? 1 : -1;
-            stepY = dir.y > 0.0 ? 1 : -1;
-            offX  = dir.x > 0.0 ? 1 : 0;
-            offY  = dir.y > 0.0 ? 1 : 0;
-        } else if (roll < reflChance + transChance) {
-            energy *= 1.0 - ((1.0 - px.transmission) * pixel_length);
-        } else {
+        // Exited tile: enqueue to next wave.
+        //if (mp.x + offX < tile_x0 || mp.x + offX >= tile_x1 || mp.y + offY < tile_y0 || mp.y + offY >= tile_y1) {
+        if (mp.x < tile_x0 || mp.x >= tile_x1 || mp.y < tile_y0 || mp.y >= tile_y1) {
+            emit_to_queue_b(pos, dir, energy, mp);
             return;
         }
     }
@@ -180,6 +208,7 @@ void main() {
         for (uint r = gl_LocalInvocationID.x; r < n; r += gl_WorkGroupSize.x) {
             Ray ray = rays_in[start + r];
             march_ray(ray, tile_x0, tile_y0);
+            //march_ray(ray);
         }
         // Leftover rays past the cap: forward to next wave unchanged.
         for (uint r = n + gl_LocalInvocationID.x; r < count; r += gl_WorkGroupSize.x) {
@@ -205,5 +234,8 @@ void main() {
         if (r != 0u) imageStore(computeAccuR, gp, uvec4(imageLoad(computeAccuR, gp).x + r));
         if (g != 0u) imageStore(computeAccuG, gp, uvec4(imageLoad(computeAccuG, gp).x + g));
         if (b != 0u) imageStore(computeAccuB, gp, uvec4(imageLoad(computeAccuB, gp).x + b));
+//        imageStore(computeAccuR, gp, uvec4(imageLoad(computeAccuR, gp).x + r));
+//        imageStore(computeAccuG, gp, uvec4(imageLoad(computeAccuG, gp).x + g));
+//        imageStore(computeAccuB, gp, uvec4(imageLoad(computeAccuB, gp).x + b));
     }
 }

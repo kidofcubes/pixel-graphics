@@ -24,8 +24,8 @@ float linearFalloff = (1.0/
 // Wavefront tile-bucket constants
 #define TILE_W 16
 #define TILE_H 16
-#define TILES_PER_ROW ((RESOLUTIONX + TILE_W - 1) / TILE_W)
-#define TILES_PER_COL ((RESOLUTIONY + TILE_H - 1) / TILE_H)
+#define TILES_PER_ROW int((RESOLUTIONX + TILE_W - 1) / TILE_W)
+#define TILES_PER_COL int((RESOLUTIONY + TILE_H - 1) / TILE_H)
 #define TILE_COUNT (TILES_PER_ROW * TILES_PER_COL)
 #define TILE_PIXELS (TILE_W * TILE_H)
 #define MAX_RAYS 80000
