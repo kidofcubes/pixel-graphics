@@ -21,6 +21,29 @@ layout(std430, binding = OUTPUTCOUNT) restrict buffer outputCount {
     uint cnt_out;
 };
 
+vec3 sun_pass_through_simulate(
+    vec2 dir, vec3 color, float distance,
+    vec3 scattering, vec3 absorption, float air_density
+){
+    //    // sin of elevation angle — how "steep" the ray is
+    //    // sun_dir.y is negative if pointing downward, so take abs
+    //    let sin_elev = sun_dir.y.abs().max(0.05);  // clamp prevents blowup at horizon
+    //
+    //    // slant path through virtual atmosphere
+    //    let air_mass   = 1.0 / sin_elev;
+    //    let path       = virtual_depth * air_mass;
+    float path = distance;
+
+    // same Beer-Lambert you already use in-scene, just applied analytically
+    vec3 combined = scattering + absorption;
+    vec3 attenuation = exp(-combined * air_density * path); // per-channel vec3
+
+    return color * attenuation;
+}
+
+// Append a ray to the output queue, dropping it if its energy is negligible
+// or the queue is full. We atomically reserve a slot and skip the write if
+// we overshoot MAX_RAYS; clamp_count.comp trims cnt_out back afterwards.
 void append_ray(vec2 pos, vec2 dir, vec3 energy) {
     if (max(max(energy.x, energy.y), energy.z) <= 0.00001) return;
     uint slot = atomicAdd(cnt_out, 1u);
@@ -34,62 +57,124 @@ void append_ray(vec2 pos, vec2 dir, vec3 energy) {
 }
 
 void main() {
-    uint gid = gl_GlobalInvocationID.x;
-    if (gid >= raysToEmit) return;
+    uint rayIndex = gl_GlobalInvocationID.x;
+    if (rayIndex >= raysToEmit) return;
 
-    float seed = float(gid) * 0.6180339887 + float(frame) * 0.31415926;
+    // Per-ray RNG seed: golden-ratio stride across rays, plus a frame
+    // offset so each frame draws a fresh sequence.
+    float rngSeed = float(rayIndex) * 0.6180339887 + float(frame) * 0.31415926;
 
     if (sunMode == 0) {
-        // Emissive rays from light_points
+        // ---- Emissive rays: spawn from a randomly-chosen scene light ----
         if (lightCount <= 0) return;
-        uint li = uint(floor(noise2(seed, 1.0) * float(lightCount))) % uint(lightCount);
-        LightPoint lp = light_points[li];
-        int lx = int(lp.x);
-        int ly = int(lp.y);
-        if (lx < 0 || lx >= RESOLUTIONX || ly < 0 || ly >= RESOLUTIONY) return;
-        PixelData px = scene_pixels[lx + ly * RESOLUTIONX];
-        if (px.emissiveness <= 0.0) return;
 
-        float jx = noise2(seed, 2.0);
-        float jy = noise2(seed, 3.0);
-        vec2 pos = vec2(lp.x + jx, lp.y + jy);
-        float theta = noise2(seed, 4.0) * 2.0 * PI;
-        vec2 dir = vec2(cos(theta), sin(theta));
-        vec3 energy = px.color * px.emissiveness * (float(lightCount) / float(raysToEmit));
-        append_ray(pos, dir, energy);
+        // Pick one light uniformly at random.
+        uint lightIndex = uint(floor(noise2(rngSeed, 1.0) * float(lightCount))) % uint(lightCount);
+        LightPoint light = light_points[lightIndex];
+
+        // Bounds-check the light's pixel and read its scene data.
+        int lightPixelX = int(light.x);
+        int lightPixelY = int(light.y);
+        if (lightPixelX < 0 || lightPixelX >= RESOLUTIONX ||
+            lightPixelY < 0 || lightPixelY >= RESOLUTIONY) return;
+        PixelData lightPixel = scene_pixels[lightPixelX + lightPixelY * RESOLUTIONX];
+        if (lightPixel.emissiveness <= 0.0) return;
+
+        // Jitter the spawn point within the light's pixel for anti-aliasing.
+        float jitterX = noise2(rngSeed, 2.0);
+        float jitterY = noise2(rngSeed, 3.0);
+        vec2 spawnPos = vec2(light.x + jitterX, light.y + jitterY);
+
+        // Random outgoing direction on the unit circle.
+        float emitAngle = noise2(rngSeed, 4.0) * 2.0 * PI;
+        vec2 emitDir = vec2(cos(emitAngle), sin(emitAngle));
+
+        // Monte Carlo unbiased estimator: under uniform light sampling each
+        // light gets ~raysToEmit/lightCount rays in expectation, so scale by
+        // lightCount/raysToEmit to keep total flux stable as either changes.
+        vec3 rayEnergy = lightPixel.color * lightPixel.emissiveness
+                       * (float(lightCount) / float(raysToEmit));
+
+        append_ray(spawnPos, emitDir, rayEnergy);
     } else {
-        // Sun/moon rays from outside the image, marching inward.
-        vec2 dir;
+        // ---- Sun/moon rays: parallel beam entering the image from outside ----
+
+        // Beam direction from timeOfDay. The split keeps the sun above the
+        // horizon for the first half of the day and the moon for the second
+        // (rather than letting either dip below).
+        vec2 sunDir;
         if (timeOfDay < 0.5) {
-            dir = vec2(-cos(timeOfDay * PI * 2.0), -sin(timeOfDay * PI * 2.0));
+            sunDir = vec2(-cos(timeOfDay * PI * 2.0), -sin(timeOfDay * PI * 2.0));
         } else {
-            dir = vec2(cos(timeOfDay * PI * 2.0), sin(timeOfDay * PI * 2.0));
+            sunDir = vec2( cos(timeOfDay * PI * 2.0),  sin(timeOfDay * PI * 2.0));
         }
-        vec2 perp = vec2(-dir.y, dir.x);
+        // Perpendicular to the beam — used to spread spawn points across the
+        // wavefront orthogonal to sunDir.
+        vec2 beamPerp = vec2(-sunDir.y, sunDir.x);
+        vec2 center = vec2(0.5)+(vec2(RESOLUTIONX, RESOLUTIONY)/2.0);
 
-        float p0 = dot(vec2(0.0, 0.0), perp);
-        float p1 = dot(vec2(0.0, float(RESOLUTIONY)), perp);
-        float p2 = dot(vec2(float(RESOLUTIONX), float(RESOLUTIONY)), perp);
-        float p3 = dot(vec2(float(RESOLUTIONX), 0.0), perp);
-        float minPerp = min(min(p0, p1), min(p2, p3));
-        float maxPerp = max(max(p0, p1), max(p2, p3));
+        // Project the four image corners onto beamPerp; [min, max] is the
+        // width of the slab the wavefront must cover.
+        float corner0Proj = dot(vec2(0.0,                0.0               ) - center, beamPerp);
+        float corner1Proj = dot(vec2(0.0,                float(RESOLUTIONY)) - center, beamPerp);
+        float corner2Proj = dot(vec2(float(RESOLUTIONX), float(RESOLUTIONY)) - center, beamPerp);
+        float corner3Proj = dot(vec2(float(RESOLUTIONX), 0.0               ) - center, beamPerp);
+        float minPerp = min(min(corner0Proj, corner1Proj), min(corner2Proj, corner3Proj));
+        float maxPerp = max(max(corner0Proj, corner1Proj), max(corner2Proj, corner3Proj));
 
-        vec2 initPos = (perp * mix(minPerp, maxPerp, noise2(float(gid) / 100000.0, float(frame) / 100000.0)))
-                     - (dir * (sqrt(float(RESOLUTIONX * RESOLUTIONY)) + 10.0));
-        float t0 = (initPos.y - float(RESOLUTIONY - 1)) / -dir.y;
-        float t1;
-        if (dir.x < 0.0) {
-            t1 = (initPos.x - float(RESOLUTIONX - 1)) / -dir.x;
+        // Random spawn point on the wavefront slab, pulled back along -sunDir
+        // by more than an image diagonal so the entry march below is sure to
+        // clip back to the image boundary from outside.
+        float perpT = noise2(float(rayIndex) / 1.0, float(frame) / 10000.0);
+        perpT = fract(perpT * 100.0); //i think the noise is biased towards 0 and 1 so this helps mitigate it slightly
+        perpT=fract(rayIndex/16000.0); //temporary smooth noise
+        perpT=fract(perpT+(noise2(float(rayIndex) / 1.0, float(frame) / 10000.0)/10000.0));
+        float pullbackDist = sqrt(float(RESOLUTIONX * RESOLUTIONY)) + 10.0;
+//        float pullbackDist = 1000.0;
+        vec2 spawnPos = (beamPerp * mix(minPerp, maxPerp, perpT)) + center
+                      - (sunDir * pullbackDist);
+
+        // March forward along sunDir to the first image edge it crosses.
+        // tTop hits the top edge (y = RESOLUTIONY - 1); tSide hits the left
+        // or right edge depending on sunDir.x's sign. Taking max() ensures
+        // both axes have entered the image.
+        float tTop = (spawnPos.y - float(RESOLUTIONY)) / -sunDir.y;
+        float tSide;
+        if (sunDir.x < 0.0) {
+            tSide = (spawnPos.x - float(RESOLUTIONX)) / -sunDir.x;
         } else {
-            t1 = (initPos.x - 0.0) / -dir.x;
+            tSide = (spawnPos.x - 0.0) / -sunDir.x;
         }
-        initPos = initPos + (dir * max(t0, t1));
+        float dist = max(tTop, tSide);
+        spawnPos = spawnPos + (sunDir * dist);
+        if(tTop > tSide){
+            spawnPos.y = float(RESOLUTIONY);
+        }else if(tSide > tTop){
+            if (sunDir.x < 0.0) {
+                spawnPos.x = float(RESOLUTIONX);
+            }else{
+                spawnPos.x = 0.0;
+            }
+        }
+//        spawnPos.x = clamp(spawnPos.x,0.0,float(RESOLUTIONX));
+//        spawnPos.y = clamp(spawnPos.y,0.0,float(RESOLUTIONY));
 
-        // Drop if the start point isn't inside the image after the entry-clamp.
-        if (initPos.x < 0.0 || initPos.x >= float(RESOLUTIONX) ||
-            initPos.y < 0.0 || initPos.y >= float(RESOLUTIONY)) return;
+//        float jitterX = noise2(rngSeed, 2.0);
+//        float jitterY = noise2(rngSeed, 3.0);
 
-        vec3 currentLight = vec3(1.0, 0.9, 0.6) * 200000.0  / float(raysToEmit);
-        append_ray(initPos, dir, currentLight);
+//        spawnPos+=vec2(jitterX, jitterY);
+
+        // Drop if the entry clamp still didn't land inside the image
+        // (happens when sunDir is nearly parallel to an edge).
+        if (spawnPos.x < 0.0 || spawnPos.x > float(RESOLUTIONX) ||
+            spawnPos.y < 0.0 || spawnPos.y > float(RESOLUTIONY)) return;
+
+        // Warm sunlight, total flux split evenly across all rays this frame.
+        vec3 sunEnergy = vec3(1.0, 0.9, 0.6) * 200000.0 / float(raysToEmit);
+        sunEnergy = sun_pass_through_simulate(
+            vec2(0.0), sunEnergy, dist,
+            vec3(0.175, 0.41, 1.0), vec3(0.0), 0.01
+        );
+        append_ray(spawnPos, sunDir, sunEnergy);
     }
 }

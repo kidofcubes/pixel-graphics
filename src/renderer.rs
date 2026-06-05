@@ -537,7 +537,7 @@ impl Renderer {
             let time_elapsed = Instant::now().duration_since(self.start_time);
             self.update_uniformi(&Uniform::RealTime, time_elapsed.as_millis() as i32);
             // self.update_uniformf(&Uniform::TimeOfDay, time_elapsed.as_millis() as f32 / (24.0 * 60.0 * 60.0));
-            self.update_uniformf(&Uniform::TimeOfDay, (time_elapsed.as_millis() as f32 / (10000.0 * 24.0)).fract());
+            self.update_uniformf(&Uniform::TimeOfDay, (time_elapsed.as_millis() as f32 / (1000.0 * 24.0)).fract());
             // println!("time of day is now {:?}",(time_elapsed.as_millis() as f32 / (1000.0 * 24.0)).fract());
             self.update_uniformi(&Uniform::SunMode, 0);
 
