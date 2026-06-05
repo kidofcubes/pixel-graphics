@@ -89,7 +89,7 @@ void main() {
         if (initPos.x < 0.0 || initPos.x >= float(RESOLUTIONX) ||
             initPos.y < 0.0 || initPos.y >= float(RESOLUTIONY)) return;
 
-        vec3 currentLight = vec3(1.0, 0.9, 0.6) * 30000000.0  / float(raysToEmit);
+        vec3 currentLight = vec3(1.0, 0.9, 0.6) * 200000.0  / float(raysToEmit);
         append_ray(initPos, dir, currentLight);
     }
 }

@@ -16,13 +16,13 @@ use crate::glutils::{create_texture, generate_light_data, load_image};
 use crate::scene::{get_scene_data, PixelData};
 
 // Tile constants — must match assets/common.glsl
-pub const TILE_W: u32 = 1;
-pub const TILE_H: u32 = 1;
-pub const MAX_RAYS: usize = 80_0;
-pub const RAYS_PER_FRAME: usize = 64_0;
-pub const SUN_RAYS_PER_FRAME: usize = 16_0;
+pub const TILE_W: u32 = 16;
+pub const TILE_H: u32 = 16;
+pub const MAX_RAYS: usize = 800_00;
+pub const RAYS_PER_FRAME: usize = 640_00;
+pub const SUN_RAYS_PER_FRAME: usize = 160_00;
 // MUST BE EVEN TO KEEP PING PONG PONGING
-pub const MAX_WAVES: usize = 2;
+pub const MAX_WAVES: usize = 64;
 
 #[repr(C)]
 #[derive(Debug, Clone, Copy, Default)]
@@ -677,12 +677,12 @@ impl Renderer {
 
         self.gl.MemoryBarrier(gl::SHADER_STORAGE_BARRIER_BIT);
 
-        // // Emissive rays (sunMode = 0).
-        // self.update_uniformi(&Uniform::SunMode, 0);
-        // let emissive_rays = RAYS_PER_FRAME as u32;
-        // self.update_uniformu(&Uniform::RaysToEmit, emissive_rays);
-        // let wgs = (emissive_rays + 255) / 256;
-        // self.gl.DispatchCompute(wgs, 1, 1);
+        // Emissive rays (sunMode = 0).
+        self.update_uniformi(&Uniform::SunMode, 0);
+        let emissive_rays = RAYS_PER_FRAME as u32;
+        self.update_uniformu(&Uniform::RaysToEmit, emissive_rays);
+        let wgs = (emissive_rays + 255) / 256;
+        self.gl.DispatchCompute(wgs, 1, 1);
 
 
 

@@ -3,7 +3,8 @@ layout(local_size_x = 256, local_size_y = 1, local_size_z = 1) in;
 layout(location = LIGHTCOUNT)   uniform int lightCount;
 layout(location = FRAME)        uniform int frame;
 
-#define COMPUTE_MULTIPLIER_PORPORTION (float(COMPUTE_MULTIPLIER) / float(max(lightCount,1)))
+//#define COMPUTE_MULTIPLIER_PORPORTION (float(COMPUTE_MULTIPLIER) / float(max(lightCount,1)))
+#define COMPUTE_MULTIPLIER_PORPORTION float(COMPUTE_MULTIPLIER)
 
 layout (r32ui, binding = COMPUTEACCUR) uniform uimage2D computeAccuR;
 layout (r32ui, binding = COMPUTEACCUG) uniform uimage2D computeAccuG;
@@ -109,7 +110,7 @@ void march_ray(in Ray ray, int tile_x0, int tile_y0) {
 
         if(mp.x%TILE_W==0||mp.y%TILE_H==0){
             //            atomicAdd(accum_g[local_idx], uint(10.0));
-            accum_g[local_idx]=COMPUTE_MULTIPLIER;
+//            accum_g[local_idx]=COMPUTE_MULTIPLIER;
             //accum_r[local_idx]=0;
             //accum_b[local_idx]=0;
         }
