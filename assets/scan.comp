@@ -1,6 +1,8 @@
-// Exclusive prefix scan over tile_count[] -> tile_start[]. Single workgroup.
-// SCAN_SIZE must be a power of two and >= TILE_COUNT.
+// Exclusive prefix scan over tile_count[] -> tile_start[]. Single workgroup,
+// each thread owns K_PER_THREAD consecutive elements so TILE_COUNT can exceed
+// the GPU's max local_size_x (1024 on most hardware).
 #define SCAN_SIZE 1024
+#define K_PER_THREAD ((TILE_COUNT + SCAN_SIZE - 1) / SCAN_SIZE)
 
 layout(local_size_x = SCAN_SIZE, local_size_y = 1, local_size_z = 1) in;
 
@@ -18,11 +20,21 @@ shared uint s[SCAN_SIZE];
 
 void main() {
     uint i = gl_LocalInvocationID.x;
-    uint v = (i < uint(TILE_COUNT)) ? tile_count[i] : 0u;
-    s[i] = v;
+    uint base = i * uint(K_PER_THREAD);
+
+    // 1. Load this thread's K elements and compute their total.
+    uint local_v[K_PER_THREAD];
+    uint sum = 0u;
+    for (uint k = 0u; k < uint(K_PER_THREAD); ++k) {
+        uint idx = base + k;
+        uint v = (idx < uint(TILE_COUNT)) ? tile_count[idx] : 0u;
+        local_v[k] = v;
+        sum += v;
+    }
+    s[i] = sum;
     barrier();
 
-    // Hillis-Steele inclusive scan in shared memory.
+    // 2. Hillis-Steele inclusive scan of the per-thread totals.
     for (uint off = 1u; off < uint(SCAN_SIZE); off <<= 1u) {
         uint add = (i >= off) ? s[i - off] : 0u;
         barrier();
@@ -30,8 +42,17 @@ void main() {
         barrier();
     }
 
-    if (i < uint(TILE_COUNT)) {
-        tile_start[i] = s[i] - v;       // inclusive -> exclusive
-        tile_write_cursor[i] = 0u;      // reset for scatter
+    // 3. Convert inclusive -> exclusive offset for this thread's block.
+    uint block_offset = (i == 0u) ? 0u : s[i - 1u];
+
+    // 4. Emit exclusive scan over this thread's K elements.
+    uint running = block_offset;
+    for (uint k = 0u; k < uint(K_PER_THREAD); ++k) {
+        uint idx = base + k;
+        if (idx < uint(TILE_COUNT)) {
+            tile_start[idx] = running;
+            tile_write_cursor[idx] = 0u;
+        }
+        running += local_v[k];
     }
 }

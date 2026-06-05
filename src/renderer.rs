@@ -16,8 +16,8 @@ use crate::glutils::{create_texture, generate_light_data, load_image};
 use crate::scene::{get_scene_data, PixelData};
 
 // Tile constants — must match assets/common.glsl
-pub const TILE_W: u32 = 16;
-pub const TILE_H: u32 = 16;
+pub const TILE_W: u32 = 1;
+pub const TILE_H: u32 = 1;
 pub const MAX_RAYS: usize = 80_0;
 pub const RAYS_PER_FRAME: usize = 64_0;
 pub const SUN_RAYS_PER_FRAME: usize = 16_0;
