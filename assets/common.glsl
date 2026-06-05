@@ -63,12 +63,17 @@ float linearFalloff = (1.0/
 #define TILES_PER_COL int((RESOLUTIONY + TILE_H - 1) / TILE_H)
 #define TILE_COUNT (TILES_PER_ROW * TILES_PER_COL)
 #define TILE_PIXELS (TILE_W * TILE_H)
-#define MAX_RAYS 800000
+#define MAX_RAYS 800
 
-uint tile_id_of(vec2 p) {
-    int tx = int(p.x) / TILE_W;
-    int ty = int(p.y) / TILE_H;
-    return uint(tx + ty * TILES_PER_ROW);
+uint tile_id_of(vec2 p, vec2 dir) {
+    ivec2 mp = ivec2(floor(p.x), floor(p.y));
+    if(float(mp.x)==p.x && dir.x<0){
+        mp.x-=1;
+    }
+    if(float(mp.y)==p.y && dir.y<0){
+        mp.y-=1;
+    }
+    return uint(mp.x / TILE_W) + (TILES_PER_ROW * uint(mp.y / TILE_H));
 }
 
 #define FLT_MAX 3.402823466e+38

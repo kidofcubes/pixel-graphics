@@ -1,4 +1,4 @@
-layout(local_size_x = 256, local_size_y = 1, local_size_z = 1) in;
+layout(local_size_x = TILE_W*TILE_H, local_size_y = 1, local_size_z = 1) in;
 
 layout(location = LIGHTCOUNT)   uniform int lightCount;
 layout(location = FRAME)        uniform int frame;
@@ -48,7 +48,7 @@ void emit_to_queue_b(vec2 pos, vec2 dir, vec3 energy, ivec2 coord) {
     r.position = emit_pos;
     r.direction = dir;
     r.energy = energy;
-    r.tile_id = int(coord.x / TILE_W) + (TILES_PER_ROW * int(coord.y / TILE_H));
+    r.tile_id = uint(coord.x / TILE_W) + (TILES_PER_ROW * uint(coord.y / TILE_H));
     queue_b[slot] = r;
 }
 
@@ -107,9 +107,9 @@ void march_ray(in Ray ray, int tile_x0, int tile_y0) {
         PixelData px = scene_pixels[mp.x + mp.y * RESOLUTIONX];
         int local_idx = (mp.x - tile_x0) + (mp.y - tile_y0) * TILE_W;
 
-        if(mp.x%16==0||mp.y%16==0){
+        if(mp.x%TILE_W==0||mp.y%TILE_H==0){
             //            atomicAdd(accum_g[local_idx], uint(10.0));
-            //accum_g[local_idx]=COMPUTE_MULTIPLIER;
+            accum_g[local_idx]=COMPUTE_MULTIPLIER;
             //accum_r[local_idx]=0;
             //accum_b[local_idx]=0;
         }

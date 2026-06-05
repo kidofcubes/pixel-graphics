@@ -18,10 +18,11 @@ use crate::scene::{get_scene_data, PixelData};
 // Tile constants — must match assets/common.glsl
 pub const TILE_W: u32 = 16;
 pub const TILE_H: u32 = 16;
-pub const MAX_RAYS: usize = 800_000;
-pub const RAYS_PER_FRAME: usize = 640_000;
-pub const SUN_RAYS_PER_FRAME: usize = 160_000;
-pub const MAX_WAVES: usize = 64;
+pub const MAX_RAYS: usize = 80_0;
+pub const RAYS_PER_FRAME: usize = 64_0;
+pub const SUN_RAYS_PER_FRAME: usize = 16_0;
+// MUST BE EVEN TO KEEP PING PONG PONGING
+pub const MAX_WAVES: usize = 2;
 
 #[repr(C)]
 #[derive(Debug, Clone, Copy, Default)]
@@ -536,7 +537,7 @@ impl Renderer {
             let time_elapsed = Instant::now().duration_since(self.start_time);
             self.update_uniformi(&Uniform::RealTime, time_elapsed.as_millis() as i32);
             // self.update_uniformf(&Uniform::TimeOfDay, time_elapsed.as_millis() as f32 / (24.0 * 60.0 * 60.0));
-            self.update_uniformf(&Uniform::TimeOfDay, (time_elapsed.as_millis() as f32 / (1000.0 * 24.0)).fract());
+            self.update_uniformf(&Uniform::TimeOfDay, (time_elapsed.as_millis() as f32 / (10000.0 * 24.0)).fract());
             // println!("time of day is now {:?}",(time_elapsed.as_millis() as f32 / (1000.0 * 24.0)).fract());
             self.update_uniformi(&Uniform::SunMode, 0);
 
@@ -598,41 +599,6 @@ impl Renderer {
         let queue_b_cnt  = self.bindings.get(&Bindings::QueueBCount.get_id()).unwrap().1;
         let tile_count_id = self.bindings.get(&Bindings::TileCount.get_id()).unwrap().1;
 
-        // ------------------------------------------------------------------
-        // Ray emission: append into queue A on top of any carryover from the
-        // previous frame. queueA_count is NOT zeroed here — raygenerator's
-        // atomicAdd extends the existing count.
-        // ------------------------------------------------------------------
-        self.bind_slot(SLOT_OUTPUT_QUEUE, queue_a_id);
-        self.bind_slot(SLOT_OUTPUT_COUNT, queue_a_cnt);
-        self.gl.MemoryBarrier(gl::BUFFER_UPDATE_BARRIER_BIT | gl::SHADER_STORAGE_BARRIER_BIT);
-
-        let raygen_prog = *self.programs.get(&Program::RayGenerator).unwrap();
-        self.gl.UseProgram(raygen_prog);
-
-        // Emissive rays (sunMode = 0).
-        self.update_uniformi(&Uniform::SunMode, 0);
-        let emissive_rays = RAYS_PER_FRAME as u32;
-        self.update_uniformu(&Uniform::RaysToEmit, emissive_rays);
-        let wgs = (emissive_rays + 255) / 256;
-        self.gl.DispatchCompute(wgs, 1, 1);
-
-        // Sun rays (sunMode = 1).
-        self.update_uniformi(&Uniform::SunMode, 1);
-        let sun_rays = SUN_RAYS_PER_FRAME as u32;
-        self.update_uniformu(&Uniform::RaysToEmit, sun_rays);
-        let wgs = (sun_rays + 255) / 256;
-        self.gl.DispatchCompute(wgs, 1, 1);
-
-        self.gl.MemoryBarrier(gl::SHADER_STORAGE_BARRIER_BIT);
-
-        // Clamp queue_a_count to MAX_RAYS. Raygenerator's slot check stops writes
-        // past MAX_RAYS but the atomic counter keeps growing — left unclamped,
-        // count.comp/scatter.comp would iterate over stale slots.
-        let clamp_prog = *self.programs.get(&Program::ClampCount).unwrap();
-        self.gl.UseProgram(clamp_prog);
-        self.gl.DispatchCompute(1, 1, 1);
-        self.gl.MemoryBarrier(gl::SHADER_STORAGE_BARRIER_BIT);
 
         // ------------------------------------------------------------------
         // Wave loop: ping-pong queueA <-> queueB.
@@ -644,8 +610,10 @@ impl Renderer {
 
         let sort_wgs = ((MAX_RAYS + 255) / 256) as u32;
         let tile_wgs = self.tile_count as u32;
+        self.generate_rays();
 
         for wave in 0..MAX_WAVES {
+
             let (in_q, in_c, out_q, out_c) = if wave % 2 == 0 {
                 (queue_a_id, queue_a_cnt, queue_b_id, queue_b_cnt)
             } else {
@@ -685,6 +653,46 @@ impl Renderer {
 
             let _ = wave;
         }
+    }
+    unsafe fn generate_rays(&self) {
+        // ------------------------------------------------------------------
+        // Ray emission: append into queue A on top of any carryover from the
+        // previous frame. queueA_count is NOT zeroed here — raygenerator's
+        // atomicAdd extends the existing count.
+        // ------------------------------------------------------------------
+        self.bind_slot(SLOT_OUTPUT_QUEUE, self.bindings.get(&Bindings::QueueA.get_id()).unwrap().1);
+        self.bind_slot(SLOT_OUTPUT_COUNT, self.bindings.get(&Bindings::QueueACount.get_id()).unwrap().1);
+        self.gl.MemoryBarrier(gl::BUFFER_UPDATE_BARRIER_BIT | gl::SHADER_STORAGE_BARRIER_BIT);
+
+        let raygen_prog = *self.programs.get(&Program::RayGenerator).unwrap();
+        self.gl.UseProgram(raygen_prog);
+
+
+        // Sun rays (sunMode = 1).
+        self.update_uniformi(&Uniform::SunMode, 1);
+        let sun_rays = SUN_RAYS_PER_FRAME as u32;
+        self.update_uniformu(&Uniform::RaysToEmit, sun_rays);
+        let wgs = (sun_rays + 255) / 256;
+        self.gl.DispatchCompute(wgs, 1, 1);
+
+        self.gl.MemoryBarrier(gl::SHADER_STORAGE_BARRIER_BIT);
+
+        // // Emissive rays (sunMode = 0).
+        // self.update_uniformi(&Uniform::SunMode, 0);
+        // let emissive_rays = RAYS_PER_FRAME as u32;
+        // self.update_uniformu(&Uniform::RaysToEmit, emissive_rays);
+        // let wgs = (emissive_rays + 255) / 256;
+        // self.gl.DispatchCompute(wgs, 1, 1);
+
+
+
+        // Clamp queue_a_count to MAX_RAYS. Raygenerator's slot check stops writes
+        // past MAX_RAYS but the atomic counter keeps growing — left unclamped,
+        // count.comp/scatter.comp would iterate over stale slots.
+        let clamp_prog = *self.programs.get(&Program::ClampCount).unwrap();
+        self.gl.UseProgram(clamp_prog);
+        self.gl.DispatchCompute(1, 1, 1);
+        self.gl.MemoryBarrier(gl::SHADER_STORAGE_BARRIER_BIT);
     }
 
     pub fn resize(&self, width: i32, height: i32) {

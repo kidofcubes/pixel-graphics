@@ -29,7 +29,7 @@ void append_ray(vec2 pos, vec2 dir, vec3 energy) {
     r.position = pos;
     r.direction = dir;
     r.energy = energy;
-    r.tile_id = tile_id_of(pos);
+    r.tile_id = tile_id_of(pos, dir);
     q_out[slot] = r;
 }
 
