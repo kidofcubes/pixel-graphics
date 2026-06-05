@@ -199,7 +199,7 @@ pub unsafe fn create_compute_shader_as_program(
     gl: &gl::Gl,
     path: &Path,
 ) -> gl::types::GLuint {
-    let compiled_spirv_shader = compile_shader(&get_shader_source(path, false), ShaderKind::DefaultCompute, path.to_str().unwrap());
+    let compiled_spirv_shader = compile_shader(&get_shader_source(path, false), ShaderKind::DefaultCompute, path);
     let program = create_compute_program(gl, &compiled_spirv_shader);
 
     let label = path.to_str().unwrap();
@@ -212,7 +212,7 @@ pub unsafe fn create_compute_shader_as_program(
     program
 }
 
-fn compile_shader(src: &str, kind: ShaderKind, name: &str) -> Vec<u32> {
+fn compile_shader(src: &str, kind: ShaderKind, path: &Path) -> Vec<u32> {
     let compiler = Compiler::new().unwrap();
     let mut options = CompileOptions::new().unwrap();
 
@@ -228,8 +228,15 @@ fn compile_shader(src: &str, kind: ShaderKind, name: &str) -> Vec<u32> {
     // Keep it off so debug info isn't stripped
     options.set_optimization_level(shaderc::OptimizationLevel::Zero);
 
+    // The third argument becomes the OpString/OpSource path in the SPIR-V.
+    // Use an absolute, canonical path so Nsight can find it on disk.
+    let canonical = path.canonicalize().unwrap();
+    let filename = canonical.to_str().unwrap();
+    println!("canonical filename is {:?}",filename);
+
+
     let artifact = compiler
-        .compile_into_spirv(src, kind, name, "main", Some(&options))
+        .compile_into_spirv(src, kind, filename, "main", Some(&options))
         .expect("GLSL → SPIR-V compilation failed");
 
     artifact.as_binary().to_vec()

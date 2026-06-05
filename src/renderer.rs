@@ -364,12 +364,12 @@ impl Renderer {
 
             // === wavefront compute programs ===
             let load_compute = |path: &str| -> GLuint {
-                // let sh = glutils::create_shader(&gl, gl::COMPUTE_SHADER, &PathBuf::from(path));
-                // let p = gl.CreateProgram();
-                // gl.AttachShader(p, sh);
-                // gl.LinkProgram(p);
-                // p
-                return glutils::create_compute_shader_as_program(&gl, &PathBuf::from(path));
+                let sh = glutils::create_shader(&gl, gl::COMPUTE_SHADER, &PathBuf::from(path));
+                let p = gl.CreateProgram();
+                gl.AttachShader(p, sh);
+                gl.LinkProgram(p);
+                p
+                // return glutils::create_compute_shader_as_program(&gl, &PathBuf::from(path));
             };
             programs.insert(Program::TilePass,     load_compute("assets/tile_pass.comp"));
             programs.insert(Program::RayGenerator, load_compute("assets/raygenerator.comp"));

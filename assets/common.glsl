@@ -1,6 +1,6 @@
 #version 460
-#pragma optimize(off)
-#pragma debug(on)
+//#pragma optimize(off)
+//#pragma debug(on)
 
 //LAYOUT INDEXES
 

@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <style>canvas { border: 2px solid #333; background: #f9f9f9; }</style>
+</head>
+<body>
+    <canvas id="gridCanvas" width="800" height="800"></canvas>
+    <script>
+        const canvas = document.getElementById('gridCanvas');
+        const ctx = canvas.getContext('2d');
+        const cellSize = 40;
+        const gridSize = 20;
+        const grid2size = 4;
+
+        function drawGrid() {
+            ctx.strokeStyle = '#000';
+            ctx.fillStyle = '#000';
+            ctx.lineWidth = 2.5;
+            for (let i = 0; i <= gridSize; i++) {
+                //ctx.beginPath(); ctx.moveTo(i * cellSize, 0); ctx.lineTo(i * cellSize, 800); ctx.stroke();
+                //ctx.beginPath(); ctx.moveTo(0, i * cellSize); ctx.lineTo(800, i * cellSize); ctx.stroke();
+            }
+
+            ctx.font = `10px Verdana`;
+            for (let i = 0; i < gridSize; i++) {
+                for (let j = 0; j < gridSize; j++) {
+                    let px = i * cellSize;
+                    let py = j * cellSize;
+
+                    // Draw cell borders
+                    ctx.strokeRect(px, py, cellSize, cellSize);
+
+                    // Draw Index [i, j]
+                    ctx.fillText(`[${i},${j}]`, px + 0, py + 10);
+                    
+                    // Draw Pixel coordinate of the top-left corner
+                    // ctx.fillText(`x:${px},y:${py}`, px + 5, py + 35);
+                }
+            }
+
+            ctx.strokeStyle = '#0f0';
+            ctx.fillStyle = '#0f0';
+            for (let i = 0; i < (gridSize/grid2size); i++) {
+                for (let j = 0; j < (gridSize/grid2size); j++) {
+                    let px = i * cellSize * grid2size;
+                    let py = j * cellSize * grid2size;
+                    // Draw cell borders
+                    ctx.strokeRect(px, py, grid2size * cellSize, grid2size * cellSize);
+                }
+            }
+
+        }
+
+
+        function traceLine(data, fillStyle) {
+            console.log(`==============================================`);
+            let x = data.x;
+            let y = data.y;
+
+            let ix = Math.floor(x);
+            let iy = Math.floor(y);
+
+            let dirX = Math.cos(data.theta * Math.PI / 180);
+            let dirY = Math.sin(data.theta * Math.PI / 180);
+
+            if(ix==x && dirX<0) {
+                ix--;
+            }
+            if(iy==y && dirY<0) {
+                iy--;
+            }
+            tx = Math.floor(ix/grid2size);
+            ty = Math.floor(iy/grid2size);
+
+            let offX = dirX > 0 ? 1 : 0;
+            let offY = dirY > 0 ? 1 : 0;
+
+            if(dirX==0) { dirX = Number.MIN_VALUE; }
+            if(dirY==0) { dirY = Number.MIN_VALUE; }
+            console.log(`x: ${x}, y: ${y}, dirX: ${dirX}. dirY: ${dirY}`);
+
+            let stepX = dirX > 0 ? 1 : -1;
+            let stepY = dirY > 0 ? 1 : -1;
+
+            //let step2X = dirX > 0 ? 0 : -1;
+            //let step2Y = dirY > 0 ? 0 : -1;
+
+            // Loop until we reach the target cell
+            let count=0;
+            ctx.font = `40px Verdana`;
+            ctx.strokeStyle = fillStyle;
+            ctx.lineWidth = 5;
+            while (true) {
+                let dtX = ((ix + offX) - x)/dirX;
+                let dtY = ((iy + offY) - y)/dirY;
+                let stepIsX = dtX < dtY;
+                console.log(`PRE dtX: ${dtX}, dtY: ${dtY}, x: ${x}, y: ${y}, stepIsX: ${stepIsX}`);
+                //console.log(`PRE x: ${x}. y: ${y}`);
+                let dt = Math.min(dtX, dtY);
+                //console.log(`dt: ${dt}`);
+                ctx.beginPath(); ctx.moveTo(x * cellSize, y * cellSize); 
+
+                if(stepIsX){
+                    x = Math.floor(ix+stepX)+(1-offX);
+                    y += dirY * dt;
+                }else{
+                    y = Math.floor(iy+stepY)+(1-offY);
+                    x += dirX * dt;
+                }
+
+                ctx.lineTo(x * cellSize, y * cellSize); ctx.stroke();
+
+
+
+                /// DO SHIT IN THE JUST PASSED PIXEL
+                ctx.fillStyle = fillStyle;
+                //ctx.fillRect(x * cellSize, y * cellSize, cellSize, cellSize);
+                console.log(`POST x:${x}, y:${y}, c:${count}`);
+                ctx.fillText(`${count}`, (ix+0) * cellSize, (iy+1) * cellSize);
+                ctx.fillStyle = fillStyle;
+                count++;
+                /// END SHIT
+
+                if(stepIsX){
+                    ix+=stepX;
+                }else{
+                    iy+=stepY;
+                }
+
+                if(
+                    ix < (tx*grid2size) || ix >= ((tx+1)*grid2size) ||
+                    iy < (ty*grid2size) || iy >= ((ty+1)*grid2size)
+                    //ix + step2X < (tx*grid2size) || ix + step2X >= ((tx+1)*grid2size) ||
+                    //iy + step2Y < (ty*grid2size) || iy + step2Y >= ((ty+1)*grid2size)
+                ){
+                    console.log(`new pixel would be ${ix},${iy}`);
+                    console.log(`new tile would be ${Math.floor(ix/grid2size)},${Math.floor(iy/grid2size)}`);
+                    return {"x":x, "y":y, "theta": data.theta};
+                }
+            }
+        }
+
+        // You can change these coordinates to test different paths
+
+        //traceLine(5.5, 5.5, 0.5, 0.5, 'rgba(0, 255, 0, 1.0)');
+        //traceLine(15.5, 5.5, 19.5, 0.5, 'rgba(255, 0, 255, 1.0)');
+        //traceLine(15.5, 15.5, 19.5, 19.5, 'rgba(0, 255, 255, 1.0)');
+        //traceLine(5.5, 15.5, 0.5, 19.5, 'rgba(255, 0, 0, 1.0)');
+        var pos0;
+        var pos1;
+        var pos2;
+        var pos3;
+        var pos4;
+
+        pos0 = traceLine({"x":0.25, "y":10.5, "theta": 45}, 'rgba(255, 0, 255, 1.0)');
+        pos1 = traceLine(pos0, 'rgba(0, 255, 255, 1.0)');
+
+        console.log(`ALSKDFHAKSLJDHFLKASDHBFLIASUDHBFNLIASUDFBHOILASUHDFOAISDFHBAOS`);
+
+        pos0 = traceLine({"x":9.25, "y":10.5, "theta": 45 + 180}, 'rgba(255, 0, 255, 1.0)');
+        pos1 = traceLine(pos0, 'rgba(0, 255, 255, 1.0)');
+        //pos2 = traceLine(pos1, 'rgba(255, 0, 255, 1.0)');
+
+        console.log(`ALSKDFHAKSLJDHFLKASDHBFLIASUDHBFNLIASUDFBHOILASUHDFOAISDFHBAOS`);
+
+        pos0 = traceLine({"x":16, "y":16, "theta": 45 + 180}, 'rgba(255, 0, 255, 1.0)');
+
+
+        drawGrid();
+    </script>
+</body>
+</html>
