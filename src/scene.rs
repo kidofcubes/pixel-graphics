@@ -117,9 +117,9 @@ pub fn get_scene_data(scene_image: &RgbaImage, t: f32) -> Vec<PixelData>{
         //     // let pixel = pixel_data.get_mut((x+(y*width)) as usize).unwrap();
         //     pixel_data[((x+(y*width)) as usize)]=generate_single_pixel(255,255,255,128);
         // }
-        for y in height-000..height-00 {
+        // for y in height-000..height-00 {
         // for y in height-100..height-00 {
-        // for y in 0..height-000 {
+        for y in 0..height-000 {
             let pixel = pixel_data.get_mut((x+(y*width)) as usize).unwrap();
             if(pixel.density>=1.0){
                 continue;
@@ -133,12 +133,12 @@ pub fn get_scene_data(scene_image: &RgbaImage, t: f32) -> Vec<PixelData>{
                 // pixel_data[(x+(y*width)) as usize].transmission=0.985;
             let cutoff = 0.5;
             if(fbm_value<cutoff){
-                continue;
+                // continue;
             }else{
                 // continue;
             }
             let mut normalized_post_cutoff = ((fbm_value-cutoff)/(1.0-cutoff));
-            // normalized_post_cutoff = sample_cloud_density1(vec2(x as f32,y as f32), 0.25, 8.0, &fbm_noise, &worley_noise, 0.4);
+            normalized_post_cutoff = sample_cloud_density1(vec2(x as f32,y as f32), 0.25, 8.0, &fbm_noise, &worley_noise, 0.4);
             // let mut normalized_post_cutoff = remap_density(fbm_value, cutoff, 3.0);
             // normalized_post_cutoff = (normalized_post_cutoff * 16.0).round()/16.0;
 
