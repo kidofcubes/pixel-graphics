@@ -118,8 +118,13 @@ void march_ray(in Ray ray, int tile_x0, int tile_y0) {
 
 
         //DO SHIT IN JUST PASSED PIXEL
+        rngState = noise3(rngState, fract(float(s)/maxSteps) + fract(pos.x), (float(gl_LocalInvocationID.x)/float(gl_WorkGroupSize.x))+fract(pos.y));
+        if(rngState > px.thickness){
+//        if(false){
 
-        if (px.density < 1.0 && px.density>0.0) {
+        } else if(px.density == 0.0){
+
+        } else if(px.density < 1.0) {
             vec3 scattered = energy * px.scattering * max(px.density,0.0);
             atomicAdd(accum_r[local_idx], uint(scattered.r * COMPUTE_MULTIPLIER_PORPORTION));
             atomicAdd(accum_g[local_idx], uint(scattered.g * COMPUTE_MULTIPLIER_PORPORTION));
@@ -143,7 +148,7 @@ void march_ray(in Ray ray, int tile_x0, int tile_y0) {
                 offX  = dir.x > 0.0 ? 1 : 0;
                 offY  = dir.y > 0.0 ? 1 : 0;
             }
-        } else if(px.density>0.0){
+        } else {
 
             // Surface hit
             vec2 normal = stepIsX ? vec2(-float(stepX), 0.0) : vec2(0.0, -float(stepY));
@@ -151,6 +156,7 @@ void march_ray(in Ray ray, int tile_x0, int tile_y0) {
             float transChance = px.transmission;
             vec3 diffuseColor = mix(px.color, vec3(0.0), px.metallic);
             vec3 absorbed = energy * diffuseColor;
+//            vec3 absorbed = pow(energy * diffuseColor, vec3(px.thickness));
             atomicAdd(accum_r[local_idx], uint(absorbed.r * pixel_length * COMPUTE_MULTIPLIER_PORPORTION));
             atomicAdd(accum_g[local_idx], uint(absorbed.g * pixel_length * COMPUTE_MULTIPLIER_PORPORTION));
             atomicAdd(accum_b[local_idx], uint(absorbed.b * pixel_length * COMPUTE_MULTIPLIER_PORPORTION));
@@ -172,6 +178,7 @@ void march_ray(in Ray ray, int tile_x0, int tile_y0) {
                 offY  = dir.y > 0.0 ? 1 : 0;
             } else if (roll < reflChance + transChance) {
                 energy *= 1.0 - ((1.0 - px.transmission) * pixel_length);
+//                energy *= pow(1.0 - ((1.0 - px.transmission) * pixel_length), (px.thickness));
             } else {
                 return;
             }

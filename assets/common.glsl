@@ -97,6 +97,12 @@ struct PixelData {
 //b4
     vec3 absorption;
     float anisotropy;
+
+//b5
+    float thickness;
+    float padding_0;
+    float padding_1;
+    float padding_2;
 };
 
 struct LightPoint {

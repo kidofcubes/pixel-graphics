@@ -20,8 +20,14 @@ pub(crate) struct PixelData {
 
     pub absorption: Vec3,
     pub anisotropy: f32,
+
+    pub thickness: f32,
+    pub padding_0: f32,
+    pub padding_1: f32,
+    pub padding_2: f32,
 }
 const AIR_SCATTERING_MULT: f32 = 1.0;
+// const AIR_SCATTERING_MULT: f32 = 0.001;
 const AIR_SCATTERING: Vec3 = vec3(
     0.175 * AIR_SCATTERING_MULT,
     0.41 * AIR_SCATTERING_MULT,
@@ -85,9 +91,9 @@ pub fn get_scene_data(scene_image: &RgbaImage, t: f32) -> Vec<PixelData>{
     let width = scene_image.width();
     let height = scene_image.height();
     println!("width {:?} height {:?}",width,height);
-    // let mut pixel_data = generate_pixel_data(scene_image);
+    let mut pixel_data = generate_pixel_data(scene_image);
     // let mut pixel_data = Vec::with_capacity((width*height) as usize);
-    let mut pixel_data = vec![generate_single_pixel(0,0,0,0); (width*height) as usize];
+    // let mut pixel_data = vec![generate_single_pixel(0,0,0,0); (width*height) as usize];
     // pixel_data.fill();
     let mut fbm_noise = FastNoiseLite::with_seed(0);
     fbm_noise.set_noise_type(Some(NoiseType::Perlin));
@@ -117,9 +123,9 @@ pub fn get_scene_data(scene_image: &RgbaImage, t: f32) -> Vec<PixelData>{
         //     // let pixel = pixel_data.get_mut((x+(y*width)) as usize).unwrap();
         //     pixel_data[((x+(y*width)) as usize)]=generate_single_pixel(255,255,255,128);
         // }
-        // for y in height-000..height-00 {
+        for y in height-000..height-00 {
         // for y in height-100..height-00 {
-        for y in 0..height-000 {
+        // for y in 0..height-000 {
             let pixel = pixel_data.get_mut((x+(y*width)) as usize).unwrap();
             if(pixel.density>=1.0){
                 continue;
@@ -182,9 +188,14 @@ pub fn generate_single_pixel(r: u8, g: u8, b: u8, a: u8) -> PixelData{
 
         anisotropy: 1.0,
         absorption: vec3(0.0,0.0,0.0),
+
+        thickness: 1.0,
+        padding_0: 0.0,
+        padding_1: 0.0,
+        padding_2: 0.0,
     };
     if(a==128){
-        pixel_data.emissiveness = 1000.0;
+        pixel_data.emissiveness = 10.0;
         pixel_data.density = 1.0;
         pixel_data.transmission = 1.0;
         // pixel_data.reflectiveness = 0.0;
@@ -193,7 +204,7 @@ pub fn generate_single_pixel(r: u8, g: u8, b: u8, a: u8) -> PixelData{
         // pixel_data.b = 1.0;
         // pixel_data.transmission = 0.0;
     }else if(a==0){
-        pixel_data.density = 0.01;
+        pixel_data.density = 0.00;
         pixel_data.transmission = 1.0;
         pixel_data.reflectiveness = 0.0;
         pixel_data.scattering = AIR_SCATTERING;
@@ -204,6 +215,12 @@ pub fn generate_single_pixel(r: u8, g: u8, b: u8, a: u8) -> PixelData{
         pixel_data.density = 1.0;
         pixel_data.transmission = 0.6;
         pixel_data.reflectiveness= 0.0;
+    }
+    if(r==35){ //the tree leaves
+        pixel_data.thickness = 0.1;
+    }
+    if(r==106){ //the tree trunk
+        pixel_data.thickness = 0.3;
     }
     return pixel_data;
 }
