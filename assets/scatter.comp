@@ -21,7 +21,7 @@ void main() {
     uint gid = gl_GlobalInvocationID.x;
     if (gid >= cnt_in) return;
     Ray r = q_in[gid];
-    uint tid = r.tile_id;
+    uint tid = r.type_and_tile_id & 0x00FFFFFFu;
     if (tid >= uint(TILE_COUNT)) return;
     uint dst = tile_start[tid] + atomicAdd(tile_write_cursor[tid], 1u);
     if (dst < uint(MAX_RAYS)) sorted[dst] = r;

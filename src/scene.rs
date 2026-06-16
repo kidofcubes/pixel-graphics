@@ -195,7 +195,7 @@ pub fn generate_single_pixel(r: u8, g: u8, b: u8, a: u8) -> PixelData{
         padding_2: 0.0,
     };
     if(a==128){
-        pixel_data.emissiveness = 10.0;
+        pixel_data.emissiveness = 5.0;
         pixel_data.density = 1.0;
         pixel_data.transmission = 1.0;
         // pixel_data.reflectiveness = 0.0;

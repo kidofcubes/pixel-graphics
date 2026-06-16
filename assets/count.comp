@@ -14,7 +14,7 @@ layout(std430, binding = TILECOUNT) restrict buffer tileCount {
 void main() {
     uint gid = gl_GlobalInvocationID.x;
     if (gid >= cnt_in) return;
-    uint tid = q_in[gid].tile_id;
+    uint tid = q_in[gid].type_and_tile_id & 0x00FFFFFFu;
     if (tid >= uint(TILE_COUNT)) return;
     atomicAdd(tile_count[tid], 1u);
 }

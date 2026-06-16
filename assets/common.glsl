@@ -117,7 +117,7 @@ struct Ray {
     vec2 direction;
 
     vec3 energy;
-    uint tile_id;
+    uint type_and_tile_id;
 };
 
 float lightIntensity(in float dist){

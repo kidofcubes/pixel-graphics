@@ -30,7 +30,7 @@ pub struct RayGpu {
     pub position: [f32; 2],   // offset 0
     pub direction: [f32; 2],  // offset 8
     pub energy: [f32; 3],     // offset 16 (vec3 std430 align 16)
-    pub tile_id: u32,         // offset 28
+    pub type_and_tile_id: u32,         // offset 28
 }
 
 #[derive(Debug, Eq, PartialEq, Hash, Copy, Clone)]

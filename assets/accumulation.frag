@@ -21,10 +21,32 @@ PixelData get_pixel(ivec2 pos){
     return scene_pixels[pos.x+(pos.y*RESOLUTIONX)];
 }
 
-// Tone mapping functions removed as requested.
-
 // Final output color buffer
 layout(location = 0) out vec4 pixelColor;
+
+
+const float horizon_y = 111.0;
+const float sky_height = 360.0;
+
+vec3 background_sky_color(vec2 pixel_pos, vec2 sun_dir, vec3 sun_color, float time_of_day) {
+    float height_t = (pixel_pos.y - horizon_y) / sky_height; // 0 at horizon, 1 at top
+
+    // Zenith vs horizon gradient (tune these colors per time-of-day)
+    vec3 zenith_color  = vec3(0.25, 0.55, 0.95);
+    vec3 horizon_color = vec3(0.75, 0.85, 0.95);
+    vec3 base = mix(horizon_color, zenith_color, pow(height_t, 0.5));
+
+    // Glow toward the sun (fake Mie-like halo)
+    vec2 sun_pos = vec2(640.0, 360.0)*0.5;
+    vec2 to_sun = normalize(sun_pos - pixel_pos);
+    float sun_dot = dot(to_sun, -sun_dir); // how aligned this pixel is with sun direction
+    //    float sun_dot = 1.0; // how aligned this pixel is with sun direction
+    float glow_strength = 1.0;
+    vec3 sun_glow = sun_color * pow(max(sun_dot, 0.0), 8.0) * glow_strength;
+
+    return base;
+}
+
 
 
 void main() {
@@ -51,14 +73,14 @@ void main() {
 
     // C. Get the original scene pixel data and add emission
     PixelData scenePixel = get_pixel(pos);
-    vec3 emission = scenePixel.color.rgb * scenePixel.emissiveness * 10.0;
-    emission = vec3(0.0);
 
     // D. Calculate the final color for *this frame only*
-    vec3 currentFrameColor = scenePixel.color.rgb * (currentFrameIllumination + emission);
+//    vec3 currentFrameColor = scenePixel.color.rgb * (currentFrameIllumination + emission);
+    vec3 currentFrameColor = scenePixel.color.rgb * (currentFrameIllumination);
 //    currentFrameColor = currentFrameIllumination;
     //currentFrameColor = (scenePixel.color.rgb*0.5*scenePixel.color.a)+currentFrameIllumination;
-    currentFrameColor = (scenePixel.color.rgb*0.5)+currentFrameIllumination;
+//    currentFrameColor = (scenePixel.color.rgb*0.5)+currentFrameIllumination;
+    currentFrameColor = currentFrameIllumination;
 
 
     // --- 3. Accumulate with Previous Frame (Exponential Moving Average) ---
@@ -69,8 +91,8 @@ void main() {
     vec4 previousFrameData = texelFetch(fb0tex, pos, 0);
     vec3 previousFrameLDR = previousFrameData.rgb;
 //    float alpha = 0.001;
-//    float alpha = 0.01;
-    float alpha = 1.0;
+    float alpha = 0.01;
+//    float alpha = 1.0;
 //    float alpha = 0.1;
     pixelColor = vec4(mix(previousFrameLDR,currentFrameColor,alpha), 1.0);
 
