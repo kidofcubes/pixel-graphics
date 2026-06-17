@@ -14,9 +14,14 @@ use std::mem;
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 use winit::event::KeyEvent;
 use crate::glutils::{create_texture, generate_light_data, load_image};
-use crate::renderer::Configurable::CloudFBMOctaves;
+use crate::renderer::Configurable::{
+    Cloud3DDepth, Cloud3DSamples, CloudBaseMult, CloudCoverage, CloudCutoff,
+    CloudDetailMult, CloudErosionModifier, CloudFBMGain, CloudFBMLacunarity,
+    CloudFBMOctaves, CloudWorleyGain, CloudWorleyLacunarity, CloudWorleyOctaves,
+    CloudXOffset, CloudYOffset,
+};
 use crate::renderer::ConfigurableValue::{F32, I32};
-use crate::scene::{get_scene_data, PixelData};
+use crate::scene::PixelData;
 
 // Tile constants — must match assets/common.glsl
 pub const TILE_W: u32 = 16;
@@ -236,6 +241,46 @@ impl Renderer {
             Some(ConfigurableValue::I32(value, _, _)) => *value,
             _ => panic!("Invalid configurable value"),
         }
+    }
+
+    pub fn get_f32_range(&self, key: Configurable) -> (f32, f32, f32) {
+        match self.configurables.get(&key) {
+            Some(ConfigurableValue::F32(v, min, max)) => (*v, *min, *max),
+            _ => panic!("not an f32 configurable"),
+        }
+    }
+
+    pub fn get_i32_range(&self, key: Configurable) -> (i32, i32, i32) {
+        match self.configurables.get(&key) {
+            Some(ConfigurableValue::I32(v, min, max)) => (*v, *min, *max),
+            _ => panic!("not an i32 configurable"),
+        }
+    }
+
+    pub fn set_configurable_f32(&mut self, key: Configurable, value: f32) {
+        if let Some(ConfigurableValue::F32(v, _, _)) = self.configurables.get_mut(&key) {
+            *v = value;
+        }
+    }
+
+    pub fn set_configurable_i32(&mut self, key: Configurable, value: i32) {
+        if let Some(ConfigurableValue::I32(v, _, _)) = self.configurables.get_mut(&key) {
+            *v = value;
+        }
+    }
+
+    pub fn regenerate_scene(&mut self) {
+        let scene = self.scene.clone();
+        self.pixel_data = self.get_scene_data(&scene, 0.0);
+        unsafe {
+            let total_size = scene.width() as usize * scene.height() as usize * mem::size_of::<PixelData>();
+            std::ptr::copy_nonoverlapping(
+                self.pixel_data.as_ptr() as *const c_void,
+                self.scene_mapped_ptr,
+                total_size,
+            );
+        }
+        self.light_data = generate_light_data(scene.width(), scene.height(), &self.pixel_data);
     }
 
     pub fn new<D: GlDisplay>(gl_display: &D) -> Self {
@@ -496,7 +541,21 @@ impl Renderer {
             );
 
             let mut configurables = HashMap::new();
-            configurables.insert(CloudFBMOctaves, I32(4, 1, 8));
+            configurables.insert(CloudFBMOctaves,        I32(4,    1,    12));
+            configurables.insert(CloudFBMLacunarity,     F32(2.0,  0.5,  8.0));
+            configurables.insert(CloudFBMGain,           F32(0.5,  0.0,  1.0));
+            configurables.insert(CloudWorleyOctaves,     I32(4,    1,    8));
+            configurables.insert(CloudWorleyLacunarity,  F32(2.0,  0.5,  8.0));
+            configurables.insert(CloudWorleyGain,        F32(0.75, 0.0,  1.0));
+            configurables.insert(CloudCoverage,          F32(0.5,  0.0,  1.0));
+            configurables.insert(CloudBaseMult,          F32(0.25, 0.01, 5.0));
+            configurables.insert(CloudDetailMult,        F32(6.0,  0.1,  20.0));
+            configurables.insert(Cloud3DSamples,         I32(64,   1,    128));
+            configurables.insert(Cloud3DDepth,           F32(2.0,  0.1,  10.0));
+            configurables.insert(CloudErosionModifier,   F32(0.25, 0.0,  2.0));
+            configurables.insert(CloudXOffset,           F32(0.0,  -500.0, 500.0));
+            configurables.insert(CloudYOffset,           F32(0.0,  -500.0, 500.0));
+            configurables.insert(CloudCutoff,            F32(0.5,  0.0,  1.0));
 
             let mut renderer = Self {
                 programs,

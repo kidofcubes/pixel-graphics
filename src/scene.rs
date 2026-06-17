@@ -2,7 +2,12 @@ use fastnoise_lite::{FastNoiseLite, FractalType, NoiseType};
 use glam::{vec2, vec3, FloatExt, Vec2, Vec3};
 use image::RgbaImage;
 use crate::glutils::generate_pixel_data;
-use crate::renderer::Configurable::{Cloud3DSamples, CloudFBMOctaves};
+use crate::renderer::Configurable::{
+    Cloud3DDepth, Cloud3DSamples, CloudBaseMult, CloudCoverage, CloudCutoff,
+    CloudDetailMult, CloudErosionModifier, CloudFBMGain, CloudFBMLacunarity,
+    CloudFBMOctaves, CloudWorleyGain, CloudWorleyLacunarity, CloudWorleyOctaves,
+    CloudXOffset, CloudYOffset,
+};
 
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]
@@ -88,53 +93,32 @@ impl crate::renderer::Renderer {
         final_density
     }
 
-    const CLOUD_3D_SAMPLES: u32 = 64;
-    const CLOUD_3D_DEPTH: f32 = 2.0;
-
     /// Calculates the cloud density at a given 2D coordinate.
     pub fn sample_cloud_density2(&self, p: Vec2, base_mult: f32, detail_mult: f32, base_noise: &FastNoiseLite, erosion_noise: &FastNoiseLite, cloud_coverage: f32) -> f32 {
-        // 1. Position-based scale adjustments
-        let base_coord = p * base_mult;
+        let samples = self.get_i32(Cloud3DSamples);
+        let depth   = self.get_f32(Cloud3DDepth);
+
+        let base_coord   = p * base_mult;
         let detail_coord = p * detail_mult;
 
-        let base_fbm = (0..self.get_i32(Cloud3DSamples)).map(|x| {
-            (base_noise.get_noise_3d(base_coord.x, base_coord.y, x as f32 * (CLOUD_3D_DEPTH / CLOUD_3D_SAMPLES as f32) * base_mult) + 1.0) / 2.0
-        }).collect::<Vec<f32>>();
-        let summed_base_fbm = base_fbm.iter().sum::<f32>() / CLOUD_3D_SAMPLES as f32;
+        let base_fbm: Vec<f32> = (0..samples).map(|i| {
+            (base_noise.get_noise_3d(base_coord.x, base_coord.y, i as f32 * (depth / samples as f32) * base_mult) + 1.0) / 2.0
+        }).collect();
+        let summed_base_fbm = base_fbm.iter().sum::<f32>() / samples as f32;
 
         let base_density = Self::remap(summed_base_fbm, 1.0 - cloud_coverage, 1.0, 0.0, 1.0);
         if base_density <= 0.0 {
             return 0.0;
         }
 
-        // let mut worley_noise = (erosion_noise.get_noise_3d(detail_coord.x, detail_coord.y) + 1.0) / 2.0;
-        let mut worley_noise = (0..CLOUD_3D_SAMPLES).map(|x| {
-            (erosion_noise.get_noise_3d(detail_coord.x, detail_coord.y, x as f32 * (CLOUD_3D_DEPTH / CLOUD_3D_SAMPLES as f32) * detail_mult) + 1.0) / 2.0
-        }).collect::<Vec<f32>>();
-        let mut summed_worley_noise = worley_noise.iter().sum::<f32>() / CLOUD_3D_SAMPLES as f32;
-        // summed_worley_noise = remap(summed_worley_noise, 0.0, 1.0, 0.0, base_density);
+        let worley_samples: Vec<f32> = (0..samples).map(|i| {
+            (erosion_noise.get_noise_3d(detail_coord.x, detail_coord.y, i as f32 * (depth / samples as f32) * detail_mult) + 1.0) / 2.0
+        }).collect();
+        let summed_worley = worley_samples.iter().sum::<f32>() / samples as f32;
 
-        // 5. Erode the edges of the cloud
-        // We only want to erode where the cloud is already thin (at the edges).
-        // If base_density is high (inner core), erosion has less effect.
-        let mut erosion_modifier = Self::remap(base_density, 0.0, 0.3, 1.0, 0.0);
-        erosion_modifier = 0.25;
+        let erosion_modifier = self.get_f32(CloudErosionModifier);
 
-        // Carve into the base density
-        let final_density = base_density - (summed_worley_noise * erosion_modifier);
-        // let final_density = 0.2-summed_worley_noise;
-        // final_density = f32::clamp(final_density,0.0, 1.0);
-
-        // 6. Final Polish: Apply a tight contrast curve to sharpen the wispy boundaries
-        // This stops it from looking like a blurry gradient.
-        // final_density = remap(final_density, 0.1, 0.7, 0.0, 1.0);
-
-        // if(final_density<0.0 || final_density>1.0){
-        //     println!("wtf {:?}",final_density);
-        // }
-        // final_density = 0.1;
-
-        final_density
+        base_density - (summed_worley * erosion_modifier)
     }
 
     pub fn get_scene_data(&self, scene_image: &RgbaImage, t: f32) -> Vec<PixelData> {
@@ -149,14 +133,14 @@ impl crate::renderer::Renderer {
         fbm_noise.set_noise_type(Some(NoiseType::Perlin));
         fbm_noise.set_fractal_type(Some(FractalType::FBm));
         fbm_noise.set_fractal_octaves(Some(self.get_i32(CloudFBMOctaves)));
-        fbm_noise.set_fractal_lacunarity(Some(2.0));
-        fbm_noise.set_fractal_gain(Some(0.5)); // "Gain" is another word for persistence
+        fbm_noise.set_fractal_lacunarity(Some(self.get_f32(CloudFBMLacunarity)));
+        fbm_noise.set_fractal_gain(Some(self.get_f32(CloudFBMGain)));
         let mut worley_noise = FastNoiseLite::with_seed(1337);
         worley_noise.set_noise_type(Some(NoiseType::Cellular));
         worley_noise.set_fractal_type(Some(FractalType::FBm));
-        worley_noise.set_fractal_octaves(Some(4));
-        worley_noise.set_fractal_lacunarity(Some(2.0));
-        worley_noise.set_fractal_gain(Some(0.75)); // "Gain" is another word for persistence
+        worley_noise.set_fractal_octaves(Some(self.get_i32(CloudWorleyOctaves)));
+        worley_noise.set_fractal_lacunarity(Some(self.get_f32(CloudWorleyLacunarity)));
+        worley_noise.set_fractal_gain(Some(self.get_f32(CloudWorleyGain)));
 
 
         for x in 0..width - 0 {
@@ -187,14 +171,20 @@ impl crate::renderer::Renderer {
                 let x_mult = 1.0;
                 let fbm_value = (fbm_noise.get_noise_2d((x as f32 * x_mult) * pos_mult, y as f32 * pos_mult) + 1.0) / 2.0;
                 // pixel_data[(x+(y*width)) as usize].transmission=0.985;
-                let cutoff = 0.5;
+                let cutoff = self.get_f32(CloudCutoff);
                 if (fbm_value < cutoff) {
                     // continue;
                 } else {
                     // continue;
                 }
                 let mut normalized_post_cutoff = ((fbm_value - cutoff) / (1.0 - cutoff));
-                normalized_post_cutoff = Self::sample_cloud_density2(vec2(x as f32, y as f32), 0.25, 6.0, &fbm_noise, &worley_noise, 0.5);
+                normalized_post_cutoff = self.sample_cloud_density2(
+                    vec2(x as f32 + self.get_f32(CloudXOffset), y as f32 + self.get_f32(CloudYOffset)),
+                    self.get_f32(CloudBaseMult),
+                    self.get_f32(CloudDetailMult),
+                    &fbm_noise, &worley_noise,
+                    self.get_f32(CloudCoverage),
+                );
                 // let mut normalized_post_cutoff = remap_density(fbm_value, cutoff, 3.0);
                 // normalized_post_cutoff = (normalized_post_cutoff * 16.0).round()/16.0;
 
@@ -210,19 +200,6 @@ impl crate::renderer::Renderer {
             }
         }
         return pixel_data;
-    }
-
-    trait EachMaxMin {
-        fn each_max(&self, rhs: f32) -> Self;
-        fn each_min(&self, rhs: f32) -> Self;
-    }
-    impl EachMaxMin for Vec3 {
-        fn each_max(&self, rhs: f32) -> Self {
-            return vec3(self.x.max(rhs), self.y.max(rhs), self.z.max(rhs));
-        }
-        fn each_min(&self, rhs: f32) -> Self {
-            return vec3(self.x.min(rhs), self.y.min(rhs), self.z.min(rhs));
-        }
     }
 
     pub fn generate_single_pixel(r: u8, g: u8, b: u8, a: u8) -> PixelData {
@@ -276,5 +253,18 @@ impl crate::renderer::Renderer {
             pixel_data.thickness = 0.3;
         }
         return pixel_data;
+    }
+}
+
+trait EachMaxMin {
+    fn each_max(&self, rhs: f32) -> Self;
+    fn each_min(&self, rhs: f32) -> Self;
+}
+impl EachMaxMin for Vec3 {
+    fn each_max(&self, rhs: f32) -> Self {
+        vec3(self.x.max(rhs), self.y.max(rhs), self.z.max(rhs))
+    }
+    fn each_min(&self, rhs: f32) -> Self {
+        vec3(self.x.min(rhs), self.y.min(rhs), self.z.min(rhs))
     }
 }

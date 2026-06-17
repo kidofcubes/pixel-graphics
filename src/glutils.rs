@@ -4,9 +4,9 @@ use std::os::raw::c_void;
 use std::path::{Path, PathBuf};
 use image::{ImageReader, RgbaImage};
 use shaderc::{CompileOptions, Compiler, ShaderKind};
-use crate::{gl, glutils, scene};
+use crate::{gl, glutils};
 use crate::gl::types::{GLchar, GLenum, GLint, GLsizei, GLuint};
-use crate::renderer::LightPoint;
+use crate::renderer::{LightPoint, Renderer};
 use crate::scene::PixelData;
 
 pub fn load_image(path: &Path) -> RgbaImage {
@@ -80,7 +80,7 @@ pub fn generate_pixel_data(rgba: &RgbaImage) -> Vec<PixelData> {
             let mut b: u8 = px.0[2];
             let mut a: u8 = px.0[3];
 
-            return scene::generate_single_pixel(r, g, b, a);
+            return Renderer::generate_single_pixel(r, g, b, a);
         }).collect()
 }
 
