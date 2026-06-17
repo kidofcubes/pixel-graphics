@@ -203,6 +203,13 @@ impl ApplicationHandler for App {
     }
 
     fn exiting(&mut self, _event_loop: &ActiveEventLoop) {
+        // Destroy egui GL resources (buffers, textures) while the context is still
+        // current. If we let Painter drop after the context is gone, it segfaults.
+        if let Some(mut painter) = self.egui_painter.take() {
+            painter.destroy();
+        }
+        self.egui_winit = None;
+
         // NOTE: The handling below is only needed due to nvidia on Wayland to not crash
         // on exit due to nvidia driver touching the Wayland display from on
         // `exit` hook.
@@ -261,9 +268,9 @@ impl ApplicationHandler for App {
 
         // Push current GUI values to renderer
         let renderer = self.renderer.as_mut().unwrap();
-        // renderer.set_time_of_day(gui.manual_time.then_some(gui.time_of_day));
-        // renderer.set_sun_rays(Some(gui.sun_rays));
-        // renderer.set_emissive_rays(Some(gui.emissive_rays));
+        renderer.set_time_of_day(gui.manual_time.then_some(gui.time_of_day));
+        renderer.set_sun_rays(Some(gui.sun_rays));
+        renderer.set_emissive_rays(Some(gui.emissive_rays));
 
         // Run the OpenGL render
         renderer.draw();

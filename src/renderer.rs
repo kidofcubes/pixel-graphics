@@ -447,6 +447,17 @@ impl Renderer {
 
             let light_data = generate_light_data(scene.width(), scene.height(), &pixel_data);
 
+            // Suppress low-priority notifications (e.g. buffer memory placement hints
+            // from the driver). Errors, warnings, and performance messages still pass.
+            gl.DebugMessageControl(
+                gl::DONT_CARE,
+                gl::DONT_CARE,
+                gl::DEBUG_SEVERITY_NOTIFICATION,
+                0,
+                std::ptr::null(),
+                gl::FALSE,
+            );
+
             Self {
                 programs,
                 program_uniforms,
