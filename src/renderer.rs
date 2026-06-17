@@ -14,6 +14,8 @@ use std::mem;
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 use winit::event::KeyEvent;
 use crate::glutils::{create_texture, generate_light_data, load_image};
+use crate::renderer::Configurable::CloudFBMOctaves;
+use crate::renderer::ConfigurableValue::{F32, I32};
 use crate::scene::{get_scene_data, PixelData};
 
 // Tile constants — must match assets/common.glsl
@@ -173,6 +175,31 @@ pub struct LightPoint {
 pub const MAX_LIGHTS: usize = 1024;
 
 
+/// value, default, min, max
+pub enum ConfigurableValue{
+    F32(f32, f32, f32),
+    I32(i32, i32, i32)
+}
+
+#[derive(Debug, Eq, PartialEq, Hash, Copy, Clone)]
+pub enum Configurable {
+    CloudXOffset,
+    CloudYOffset,
+    CloudBaseMult,
+    CloudDetailMult,
+    Cloud3DSamples,
+    Cloud3DDepth,
+    CloudCoverage,
+    CloudErosionModifier,
+    CloudFBMOctaves,
+    CloudFBMLacunarity,
+    CloudFBMGain,
+    CloudWorleyOctaves,
+    CloudWorleyLacunarity,
+    CloudWorleyGain,
+    CloudCutoff,
+}
+
 pub struct Renderer {
     vao: gl::types::GLuint,
     // vbo: gl::types::GLuint,
@@ -191,12 +218,26 @@ pub struct Renderer {
     nearest_sampler: gl::types::GLuint,
     tiles_per_row: u32,
     tile_count: usize,
+    pub configurables: HashMap<Configurable,ConfigurableValue>,
     pub time_of_day_override: Option<f32>,
     pub sun_rays_override: Option<u32>,
     pub emissive_rays_override: Option<u32>,
 }
 
 impl Renderer {
+    pub fn get_f32(&self, configurable: Configurable) -> f32 {
+        match self.configurables.get(&configurable) {
+            Some(ConfigurableValue::F32(value, _, _)) => *value,
+            _ => panic!("Invalid configurable value"),
+        }
+    }
+    pub fn get_i32(&self, configurable: Configurable) -> i32 {
+        match self.configurables.get(&configurable) {
+            Some(ConfigurableValue::I32(value, _, _)) => *value,
+            _ => panic!("Invalid configurable value"),
+        }
+    }
+
     pub fn new<D: GlDisplay>(gl_display: &D) -> Self {
         unsafe {
             let gl = gl::Gl::load_with(|symbol| {
@@ -443,10 +484,6 @@ impl Renderer {
 
             println!("the original3 is {}",gl.GetError());
 
-            let pixel_data = get_scene_data(&scene, 0.0);
-
-            let light_data = generate_light_data(scene.width(), scene.height(), &pixel_data);
-
             // Suppress low-priority notifications (e.g. buffer memory placement hints
             // from the driver). Errors, warnings, and performance messages still pass.
             gl.DebugMessageControl(
@@ -458,7 +495,10 @@ impl Renderer {
                 gl::FALSE,
             );
 
-            Self {
+            let mut configurables = HashMap::new();
+            configurables.insert(CloudFBMOctaves, I32(4, 1, 8));
+
+            let mut renderer = Self {
                 programs,
                 program_uniforms,
                 bindings: bindings,
@@ -470,15 +510,26 @@ impl Renderer {
                 start_time: Instant::now(),
                 scene,
                 scene_mapped_ptr,
-                pixel_data,
-                light_data,
+                // pixel_data,
+                pixel_data: Vec::new(),
+                // light_data,
+                light_data: Vec::new(),
                 nearest_sampler,
                 tiles_per_row: tiles_per_row as u32,
                 tile_count,
+                configurables,
                 time_of_day_override: None,
                 sun_rays_override: None,
                 emissive_rays_override: None,
-            }
+            };
+
+
+            renderer.pixel_data = renderer.get_scene_data(&renderer.scene, 0.0);
+
+            renderer.light_data = generate_light_data(renderer.scene.width(), renderer.scene.height(), &renderer.pixel_data);
+
+
+            return renderer;
             // Self { program, gl }
         }
     }
