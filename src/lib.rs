@@ -6,6 +6,7 @@ use std::error::Error;
 use std::ffi::{CStr, CString};
 use std::num::NonZeroU32;
 use std::ops::Deref;
+use std::sync::Arc;
 
 use gl::types::GLfloat;
 use raw_window_handle::HasWindowHandle;
@@ -28,7 +29,7 @@ use half::f16;
 use winit::dpi::PhysicalSize;
 use winit::platform::x11::WindowAttributesExtX11;
 use crate::gl::types::{GLenum, GLint};
-use crate::renderer::Renderer;
+use crate::renderer::{Renderer, RAYS_PER_FRAME, SUN_RAYS_PER_FRAME};
 
 pub mod gl {
     #![allow(clippy::all)]
@@ -96,6 +97,7 @@ impl ApplicationHandler for App {
         gl_context.make_current(&gl_surface).unwrap();
 
         self.renderer.get_or_insert_with(|| Renderer::new(&gl_config.display()));
+        println!("SETUP RENDERER");
 
         // Try setting vsync.
         if let Err(res) = gl_surface
@@ -106,6 +108,30 @@ impl ApplicationHandler for App {
         }
 
         assert!(self.state.replace(AppState { gl_surface, window }).is_none());
+
+        if self.egui_winit.is_none() {
+            self.egui_winit = Some(egui_winit::State::new(
+                self.egui_ctx.clone(),
+                egui::ViewportId::ROOT,
+                &self.state.as_ref().unwrap().window,
+                None,
+                None,
+                None,
+            ));
+        }
+
+        if self.egui_painter.is_none() {
+            let glow_ctx = unsafe {
+                egui_glow::glow::Context::from_loader_function(|sym| {
+                    let cstr = CString::new(sym).unwrap();
+                    gl_config.display().get_proc_address(cstr.as_c_str()).cast()
+                })
+            };
+            self.egui_painter = Some(
+                egui_glow::Painter::new(Arc::new(glow_ctx), "", None, false)
+                    .expect("egui_glow::Painter failed"),
+            );
+        }
     }
 
     fn suspended(&mut self, _event_loop: &ActiveEventLoop) {
@@ -129,6 +155,14 @@ impl ApplicationHandler for App {
         _window_id: winit::window::WindowId,
         event: WindowEvent,
     ) {
+        let egui_consumed = if let (Some(ew), Some(state)) =
+            (self.egui_winit.as_mut(), self.state.as_ref())
+        {
+            ew.on_window_event(&state.window, &event).consumed
+        } else {
+            false
+        };
+
         match event {
             WindowEvent::RedrawRequested => {
                 
@@ -159,7 +193,7 @@ impl ApplicationHandler for App {
             WindowEvent::KeyboardInput {
                 event: key_event,
                 ..
-            } => {
+            } if !egui_consumed => {
                 if let Some(renderer) = self.renderer.as_mut() {
                     renderer.on_key_press(&key_event);
                 }
@@ -186,14 +220,72 @@ impl ApplicationHandler for App {
     }
 
     fn about_to_wait(&mut self, _event_loop: &ActiveEventLoop) {
-        if let Some(AppState { gl_surface, window }) = self.state.as_ref() {
-            let gl_context = self.gl_context.as_ref().unwrap();
-            let renderer: &mut Renderer = self.renderer.as_mut().unwrap();
-            renderer.draw();
-            window.request_redraw();
+        let Some(AppState { gl_surface, window }) = self.state.as_ref() else { return };
+        let gl_context = self.gl_context.as_ref().unwrap();
 
-            gl_surface.swap_buffers(gl_context).unwrap();
+        // Gather egui input
+        let raw_input = self.egui_winit
+            .as_mut()
+            .map(|ew| ew.take_egui_input(window))
+            .unwrap_or_default();
+
+        // Build egui frame — split field borrows so the closure can capture
+        // &mut gui_state while egui_ctx is borrowed for the run() call.
+        let mut accum_dirty = false;
+        let gui = &mut self.gui_state;
+        let full_output = self.egui_ctx.run(raw_input, |ctx| {
+            egui::Window::new("Scene Controls")
+                .resizable(false)
+                .show(ctx, |ui| {
+                    if ui.checkbox(&mut gui.manual_time, "Manual time").changed() {
+                        accum_dirty = true;
+                    }
+                    if ui.add_enabled(
+                        gui.manual_time,
+                        egui::Slider::new(&mut gui.time_of_day, 0.0f32..=1.0)
+                            .text("Time of Day"),
+                    ).changed() {
+                        accum_dirty = true;
+                    }
+                    ui.add(
+                        egui::Slider::new(&mut gui.sun_rays, 0u32..=80_000)
+                            .text("Sun rays"),
+                    );
+                    ui.add(
+                        egui::Slider::new(&mut gui.emissive_rays, 0u32..=80_000)
+                            .text("Emissive rays"),
+                    );
+                });
+        });
+        let _ = accum_dirty; // available for future use (e.g. logging, sound, etc.)
+
+        // Push current GUI values to renderer
+        let renderer = self.renderer.as_mut().unwrap();
+        // renderer.set_time_of_day(gui.manual_time.then_some(gui.time_of_day));
+        // renderer.set_sun_rays(Some(gui.sun_rays));
+        // renderer.set_emissive_rays(Some(gui.emissive_rays));
+
+        // Run the OpenGL render
+        renderer.draw();
+
+        // Paint egui overlay on top (after renderer.draw so GL state conflict is moot)
+        if let (Some(painter), Some(ew)) =
+            (self.egui_painter.as_mut(), self.egui_winit.as_mut())
+        {
+            let ppp = window.scale_factor() as f32;
+            let size = window.inner_size();
+            let prims = self.egui_ctx.tessellate(full_output.shapes, ppp);
+            painter.paint_and_update_textures(
+                [size.width, size.height],
+                ppp,
+                &prims,
+                &full_output.textures_delta,
+            );
+            ew.handle_platform_output(window, full_output.platform_output);
         }
+
+        window.request_redraw();
+        gl_surface.swap_buffers(gl_context).unwrap();
     }
 }
 
@@ -249,6 +341,24 @@ enum GlDisplayCreationState {
     Init,
 }
 
+pub struct GuiState {
+    pub time_of_day: f32,
+    pub manual_time: bool,
+    pub sun_rays: u32,
+    pub emissive_rays: u32,
+}
+
+impl Default for GuiState {
+    fn default() -> Self {
+        Self {
+            time_of_day: 0.0,
+            manual_time: false,
+            sun_rays: SUN_RAYS_PER_FRAME as u32,
+            emissive_rays: RAYS_PER_FRAME as u32,
+        }
+    }
+}
+
 pub struct App {
     template: ConfigTemplateBuilder,
     renderer: Option<Renderer>,
@@ -257,6 +367,10 @@ pub struct App {
     gl_context: Option<PossiblyCurrentContext>,
     gl_display: GlDisplayCreationState,
     pub exit_state: Result<(), Box<dyn Error>>,
+    egui_ctx: egui::Context,
+    egui_winit: Option<egui_winit::State>,
+    egui_painter: Option<egui_glow::Painter>,
+    gui_state: GuiState,
 }
 
 impl App {
@@ -268,6 +382,10 @@ impl App {
             gl_context: None,
             state: None,
             renderer: None,
+            egui_ctx: egui::Context::default(),
+            egui_winit: None,
+            egui_painter: None,
+            gui_state: GuiState::default(),
         }
     }
 }

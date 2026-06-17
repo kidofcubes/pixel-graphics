@@ -188,8 +188,12 @@ pub struct Renderer {
     scene_mapped_ptr: *mut c_void,
     pixel_data: Vec<PixelData>,
     light_data: Vec<LightPoint>,
+    nearest_sampler: gl::types::GLuint,
     tiles_per_row: u32,
     tile_count: usize,
+    pub time_of_day_override: Option<f32>,
+    pub sun_rays_override: Option<u32>,
+    pub emissive_rays_override: Option<u32>,
 }
 
 impl Renderer {
@@ -457,8 +461,12 @@ impl Renderer {
                 scene_mapped_ptr,
                 pixel_data,
                 light_data,
+                nearest_sampler,
                 tiles_per_row: tiles_per_row as u32,
                 tile_count,
+                time_of_day_override: None,
+                sun_rays_override: None,
+                emissive_rays_override: None,
             }
             // Self { program, gl }
         }
@@ -522,6 +530,12 @@ impl Renderer {
         alpha: GLfloat,
     ) {
         unsafe {
+            // Restore texture unit 0 binding that egui_glow clobbers each frame via
+            // glBindTexture(). Without this, FragTest samples the egui font atlas.
+            let fb0tex_id = self.bindings.get(&Bindings::Fb0Tex.get_id()).unwrap().1;
+            self.gl.BindTextureUnit(Bindings::Fb0Tex.get_binding(), fb0tex_id);
+            self.gl.BindSampler(Bindings::Fb0Tex.get_binding(), self.nearest_sampler);
+
             let total_size = self.scene.width() as usize * self.scene.height() as usize * mem::size_of::<PixelData>();
 
             let ubo_binding = self.bindings.get(&Bindings::LightList.get_id()).unwrap().to_owned().1;
@@ -546,7 +560,9 @@ impl Renderer {
             let time_elapsed = Instant::now().duration_since(self.start_time);
             self.update_uniformi(&Uniform::RealTime, time_elapsed.as_millis() as i32);
             // self.update_uniformf(&Uniform::TimeOfDay, time_elapsed.as_millis() as f32 / (24.0 * 60.0 * 60.0));
-            self.update_uniformf(&Uniform::TimeOfDay, (time_elapsed.as_millis() as f32 / (10000.0 * 24.0)).fract());
+            let tod = self.time_of_day_override
+                .unwrap_or_else(|| (time_elapsed.as_millis() as f32 / (10000.0 * 24.0)).fract());
+            self.update_uniformf(&Uniform::TimeOfDay, tod);
             // println!("time of day is now {:?}",(time_elapsed.as_millis() as f32 / (1000.0 * 24.0)).fract());
             self.update_uniformi(&Uniform::SunMode, 0);
 
@@ -679,7 +695,7 @@ impl Renderer {
 
         // Sun rays (sunMode = 1).
         self.update_uniformi(&Uniform::SunMode, 1);
-        let sun_rays = SUN_RAYS_PER_FRAME as u32;
+        let sun_rays = self.sun_rays_override.unwrap_or(SUN_RAYS_PER_FRAME as u32);
         self.update_uniformu(&Uniform::RaysToEmit, sun_rays);
         let wgs = (sun_rays + 255) / 256;
         self.gl.DispatchCompute(wgs, 1, 1);
@@ -688,7 +704,7 @@ impl Renderer {
 
         // Emissive rays (sunMode = 0).
         self.update_uniformi(&Uniform::SunMode, 0);
-        let emissive_rays = RAYS_PER_FRAME as u32;
+        let emissive_rays = self.emissive_rays_override.unwrap_or(RAYS_PER_FRAME as u32);
         self.update_uniformu(&Uniform::RaysToEmit, emissive_rays);
         let wgs = (emissive_rays + 255) / 256;
         self.gl.DispatchCompute(wgs, 1, 1);
@@ -708,6 +724,18 @@ impl Renderer {
         unsafe {
             self.gl.Viewport(0, 0, width, height);
         }
+    }
+
+    pub fn set_time_of_day(&mut self, v: Option<f32>) {
+        self.time_of_day_override = v;
+    }
+
+    pub fn set_sun_rays(&mut self, v: Option<u32>) {
+        self.sun_rays_override = v;
+    }
+
+    pub fn set_emissive_rays(&mut self, v: Option<u32>) {
+        self.emissive_rays_override = v;
     }
 }
 

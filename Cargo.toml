@@ -24,6 +24,9 @@ glam = "0.33.0"
 fastnoise-lite = {  version = "1.1.1" , features = ["num-traits"]}
 num-traits = "0.2.19"
 shaderc = "0.10.1"
+egui = "0.29"
+egui-winit = "0.29"
+egui_glow = "0.29"
 
 [build-dependencies]
 gl_generator = "0.14"
