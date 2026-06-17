@@ -40,7 +40,7 @@ shared uint accum_b[TILE_PIXELS];
 
 #define MAX_RAYS_PER_TILE_PER_WAVE 51200000
 
-void emit_to_queue_b(vec2 pos, vec2 dir, vec3 energy, ivec2 coord) {
+void emit_to_queue_b(vec2 pos, vec2 dir, vec3 energy, ivec2 coord, uint rayType) {
     if (max(max(energy.x, energy.y), energy.z) <= 0.00001) return;
     vec2 emit_pos = pos;
     uint slot = atomicAdd(queue_b_count, 1u);
@@ -49,12 +49,13 @@ void emit_to_queue_b(vec2 pos, vec2 dir, vec3 energy, ivec2 coord) {
     r.position = emit_pos;
     r.direction = dir;
     r.energy = energy;
-    r.type_and_tile_id = (r.type_and_tile_id & 0xFF000000u) | (uint(coord.x / TILE_W) + (TILES_PER_ROW * uint(coord.y / TILE_H)));
+    r.type_and_tile_id = (rayType << 24) | (uint(coord.x / TILE_W) + (TILES_PER_ROW * uint(coord.y / TILE_H)));
     queue_b[slot] = r;
 }
 
 void march_ray(in Ray ray, int tile_x0, int tile_y0) {
 //void march_ray(in Ray ray) {
+    uint rayType = (ray.type_and_tile_id & 0xFF000000u) >> 24;
     vec2 pos = ray.position;
     vec2 dir = ray.direction;
     vec3 energy = ray.energy;
@@ -122,8 +123,20 @@ void march_ray(in Ray ray, int tile_x0, int tile_y0) {
         if(rngState > px.thickness){
 //        if(false){
 
-        } else if(px.density == 0.0){
+        } else if(px.density == 0.0 || rayType==2){
+            if (rayType==2){
+                if (px.density<1.0){
+                    atomicAdd(accum_r[local_idx], uint(energy.r * COMPUTE_MULTIPLIER_PORPORTION));
+                    atomicAdd(accum_g[local_idx], uint(energy.g * COMPUTE_MULTIPLIER_PORPORTION));
+                    atomicAdd(accum_b[local_idx], uint(energy.b * COMPUTE_MULTIPLIER_PORPORTION));
 
+                    energy.r *= (1.0-px.density);
+                    energy.g *= (1.0-px.density);
+                    energy.b *= (1.0-px.density);
+                }else{
+                    return;
+                }
+            }
         } else if(px.density < 1.0) {
             vec3 scattered = energy * px.scattering * max(px.density,0.0);
             atomicAdd(accum_r[local_idx], uint(scattered.r * COMPUTE_MULTIPLIER_PORPORTION));
@@ -189,7 +202,7 @@ void march_ray(in Ray ray, int tile_x0, int tile_y0) {
         // Exited tile: enqueue to next wave.
         //if (mp.x + offX < tile_x0 || mp.x + offX >= tile_x1 || mp.y + offY < tile_y0 || mp.y + offY >= tile_y1) {
         if (mp.x < tile_x0 || mp.x >= tile_x1 || mp.y < tile_y0 || mp.y >= tile_y1) {
-            emit_to_queue_b(pos, dir, energy, mp);
+            emit_to_queue_b(pos, dir, energy, mp, rayType);
             return;
         }
     }

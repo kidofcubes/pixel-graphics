@@ -12,6 +12,7 @@ use crate::gl::types::{GLint, GLsizeiptr, GLuint};
 use image::RgbaImage;
 use std::mem;
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
+use winit::event::KeyEvent;
 use crate::glutils::{create_texture, generate_light_data, load_image};
 use crate::scene::{get_scene_data, PixelData};
 
@@ -504,6 +505,14 @@ impl Renderer {
             self.frame=self.frame+1;
         //}
     }
+    pub fn on_key_press(&mut self, event: &KeyEvent) {
+        match event {
+            KeyEvent { physical_key: winit::keyboard::PhysicalKey::Code(winit::keyboard::KeyCode::ArrowUp), .. } => {
+                // self.
+            },
+            _ => {}
+        }
+    }
 
     pub fn draw_with_clear_color(
         &self,
@@ -537,7 +546,7 @@ impl Renderer {
             let time_elapsed = Instant::now().duration_since(self.start_time);
             self.update_uniformi(&Uniform::RealTime, time_elapsed.as_millis() as i32);
             // self.update_uniformf(&Uniform::TimeOfDay, time_elapsed.as_millis() as f32 / (24.0 * 60.0 * 60.0));
-            self.update_uniformf(&Uniform::TimeOfDay, (time_elapsed.as_millis() as f32 / (1000.0 * 24.0)).fract());
+            self.update_uniformf(&Uniform::TimeOfDay, (time_elapsed.as_millis() as f32 / (10000.0 * 24.0)).fract());
             // println!("time of day is now {:?}",(time_elapsed.as_millis() as f32 / (1000.0 * 24.0)).fract());
             self.update_uniformi(&Uniform::SunMode, 0);
 

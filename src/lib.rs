@@ -151,10 +151,19 @@ impl ApplicationHandler for App {
                 }
             },
             WindowEvent::CloseRequested
-            | WindowEvent::KeyboardInput {
+             => event_loop.exit(),
+            WindowEvent::KeyboardInput {
                 event: KeyEvent { logical_key: Key::Named(NamedKey::Escape), .. },
                 ..
             } => event_loop.exit(),
+            WindowEvent::KeyboardInput {
+                event: key_event,
+                ..
+            } => {
+                if let Some(renderer) = self.renderer.as_mut() {
+                    renderer.on_key_press(&key_event);
+                }
+            },
             _ => (),
         }
     }

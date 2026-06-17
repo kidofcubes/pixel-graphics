@@ -65,22 +65,33 @@ void main() {
     float(g_count),
     float(b_count)
     ) / float(COMPUTE_MULTIPLIER);
-//    currentFrameIllumination = vec3(
-//        clamp(currentFrameIllumination.r, 0.0, 1.0),
-//        clamp(currentFrameIllumination.g, 0.0, 1.0),
-//        clamp(currentFrameIllumination.b, 0.0, 1.0)
-//    );
+    //    currentFrameIllumination = vec3(
+    //        clamp(currentFrameIllumination.r, 0.0, 1.0),
+    //        clamp(currentFrameIllumination.g, 0.0, 1.0),
+    //        clamp(currentFrameIllumination.b, 0.0, 1.0)
+    //    );
 
     // C. Get the original scene pixel data and add emission
     PixelData scenePixel = get_pixel(pos);
 
     // D. Calculate the final color for *this frame only*
-//    vec3 currentFrameColor = scenePixel.color.rgb * (currentFrameIllumination + emission);
+    //    vec3 currentFrameColor = scenePixel.color.rgb * (currentFrameIllumination + emission);
     vec3 currentFrameColor = scenePixel.color.rgb * (currentFrameIllumination);
-//    currentFrameColor = currentFrameIllumination;
+    //    currentFrameColor = currentFrameIllumination;
     //currentFrameColor = (scenePixel.color.rgb*0.5*scenePixel.color.a)+currentFrameIllumination;
-//    currentFrameColor = (scenePixel.color.rgb*0.5)+currentFrameIllumination;
-    currentFrameColor = currentFrameIllumination;
+        currentFrameColor = (scenePixel.color.rgb*0.5)+currentFrameIllumination;
+
+//    currentFrameColor = currentFrameIllumination;
+//    currentFrameColor = scenePixel.color.rgb;
+
+
+    if(vec2(pos).y >= horizon_y){
+        vec3 sky_color = background_sky_color(vec2(pos), normalize(vec2(-0.5, -0.5)), vec3(1.0, 0.9, 0.6), 0.0);
+        if(scenePixel.density < 1){
+//            currentFrameColor = mix(sky_color, currentFrameColor, scenePixel.density);
+//            currentFrameColor = (sky_color*(1.0-scenePixel.density)) + currentFrameColor;
+        }
+    }
 
 
     // --- 3. Accumulate with Previous Frame (Exponential Moving Average) ---
