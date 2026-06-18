@@ -14,7 +14,7 @@ use std::mem;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use winit::event::KeyEvent;
 use crate::glutils::{create_texture, generate_light_data, load_image};
-use crate::renderer::Configurable::{Cloud3DDepth, Cloud3DSamples, CloudBaseMult, CloudCoverage, CloudCutoff, CloudDensityExponent, CloudDensityMultiplier, CloudDetailMult, CloudErosionModifier, CloudFBMGain, CloudFBMLacunarity, CloudFBMOctaves, CloudThicknessExponent, CloudThicknessMultiplier, CloudWorleyGain, CloudWorleyLacunarity, CloudWorleyOctaves, CloudXOffset, CloudYOffset};
+use crate::renderer::Configurable::{Cloud3DDepth, Cloud3DSamples, CloudBaseMult, CloudCoverage, CloudCutoff, CloudDensityExponent, CloudDensityMultiplier, CloudDetailMult, CloudErosionModifier, CloudFBMGain, CloudFBMLacunarity, CloudFBMOctaves, CloudThicknessExponent, CloudThicknessMultiplier, CloudWorleyGain, CloudWorleyLacunarity, CloudWorleyOctaves, CloudXOffset, CloudYOffset, DebugFloat0, DebugFloat1, DebugFloat2};
 use crate::renderer::ConfigurableValue::{F32, I32};
 use crate::scene::PixelData;
 
@@ -112,6 +112,9 @@ pub enum Uniform {
     SunMode,
     RealTime,
     RaysToEmit,
+    DebugFloat0,
+    DebugFloat1,
+    DebugFloat2,
 }
 impl Uniform {
     fn get_id(&self) -> &str {
@@ -122,6 +125,9 @@ impl Uniform {
             Uniform::SunMode => "sunMode",
             Uniform::RealTime => "realTime",
             Uniform::RaysToEmit => "raysToEmit",
+            Uniform::DebugFloat0 => "debugFloat0",
+            Uniform::DebugFloat1 => "debugFloat1",
+            Uniform::DebugFloat2 => "debugFloat2",
         }
     }
 
@@ -133,6 +139,9 @@ impl Uniform {
             Uniform::SunMode => 3,
             Uniform::RealTime => 4,
             Uniform::RaysToEmit => 5,
+            Uniform::DebugFloat0 => 6,
+            Uniform::DebugFloat1 => 7,
+            Uniform::DebugFloat2 => 8,
         }
     }
 }
@@ -175,7 +184,8 @@ pub struct LightPoint {
 pub const MAX_LIGHTS: usize = 1024;
 
 
-/// value, default, min, max
+/// value, min, max
+#[derive(Clone)]
 pub enum ConfigurableValue{
     F32(f32, f32, f32),
     I32(i32, i32, i32)
@@ -202,6 +212,68 @@ pub enum Configurable {
     CloudDensityMultiplier,
     CloudThicknessExponent,
     CloudThicknessMultiplier,
+    DebugFloat0,
+    DebugFloat1,
+    DebugFloat2,
+}
+
+impl Configurable {
+    pub fn all() -> &'static [Self] {
+        use Configurable::*;
+        &[
+            CloudCoverage, CloudCutoff, CloudBaseMult, CloudDetailMult,
+            CloudErosionModifier, CloudXOffset, CloudYOffset,
+            Cloud3DDepth, Cloud3DSamples,
+            CloudFBMOctaves, CloudFBMLacunarity, CloudFBMGain,
+            CloudWorleyOctaves, CloudWorleyLacunarity, CloudWorleyGain,
+            CloudDensityExponent, CloudDensityMultiplier,
+            CloudThicknessExponent, CloudThicknessMultiplier,
+            DebugFloat0, DebugFloat1, DebugFloat2,
+        ]
+    }
+
+    pub fn label(&self) -> &'static str {
+        match self {
+            Configurable::CloudXOffset            => "X offset",
+            Configurable::CloudYOffset            => "Y offset",
+            Configurable::CloudBaseMult           => "Base mult",
+            Configurable::CloudDetailMult         => "Detail mult",
+            Configurable::Cloud3DSamples          => "3D samples",
+            Configurable::Cloud3DDepth            => "3D depth",
+            Configurable::CloudCoverage           => "Coverage",
+            Configurable::CloudErosionModifier    => "Erosion",
+            Configurable::CloudFBMOctaves         => "FBM octaves",
+            Configurable::CloudFBMLacunarity      => "FBM lacunarity",
+            Configurable::CloudFBMGain            => "FBM gain",
+            Configurable::CloudWorleyOctaves      => "Worley octaves",
+            Configurable::CloudWorleyLacunarity   => "Worley lacunarity",
+            Configurable::CloudWorleyGain         => "Worley gain",
+            Configurable::CloudCutoff             => "Cutoff",
+            Configurable::CloudDensityExponent    => "Density exponent",
+            Configurable::CloudDensityMultiplier  => "Density multiplier",
+            Configurable::CloudThicknessExponent  => "Thickness exponent",
+            Configurable::CloudThicknessMultiplier=> "Thickness multiplier",
+            Configurable::DebugFloat0             => "Debug float 0",
+            Configurable::DebugFloat1             => "Debug float 1",
+            Configurable::DebugFloat2             => "Debug float 2",
+        }
+    }
+
+    pub fn group(&self) -> &'static str {
+        match self {
+            Configurable::DebugFloat0 | Configurable::DebugFloat1 | Configurable::DebugFloat2 => "Debug",
+            _ => "Cloud",
+        }
+    }
+
+    pub fn uniform(&self) -> Option<Uniform> {
+        match self {
+            Configurable::DebugFloat0 => Some(Uniform::DebugFloat0),
+            Configurable::DebugFloat1 => Some(Uniform::DebugFloat1),
+            Configurable::DebugFloat2 => Some(Uniform::DebugFloat2),
+            _ => None,
+        }
+    }
 }
 
 pub struct Renderer {
@@ -529,7 +601,7 @@ impl Renderer {
             let mut program_uniforms: HashMap<Program, std::collections::HashSet<Uniform>> = HashMap::new();
             for (program_name, program) in programs.iter() {
                 let mut set = std::collections::HashSet::new();
-                for u in [Uniform::Frame, Uniform::LightCount, Uniform::TimeOfDay, Uniform::SunMode, Uniform::RealTime, Uniform::RaysToEmit] {
+                for u in [Uniform::Frame, Uniform::LightCount, Uniform::TimeOfDay, Uniform::SunMode, Uniform::RealTime, Uniform::RaysToEmit, Uniform::DebugFloat0, Uniform::DebugFloat1, Uniform::DebugFloat2] {
                     let cname = CString::new(u.get_id()).unwrap();
                     let loc = gl.GetUniformLocation(*program, cname.as_ptr());
                     if loc != -1 { set.insert(u); }
@@ -570,6 +642,9 @@ impl Renderer {
             configurables.insert(CloudDensityMultiplier,    F32(0.5,  0.0,  1.0));
             configurables.insert(CloudThicknessExponent,    F32(0.5,  0.0,  1.0));
             configurables.insert(CloudThicknessMultiplier,  F32(0.5,  0.0,  1.0));
+            configurables.insert(DebugFloat0,               F32(0.0,  1.0,  10.0));
+            configurables.insert(DebugFloat1,               F32(0.0,  1.0,  10.0));
+            configurables.insert(DebugFloat2,               F32(0.0,  1.0,  10.0));
 
             let mut renderer = Self {
                 programs,
@@ -707,6 +782,13 @@ impl Renderer {
                 .unwrap_or_else(|| (time_elapsed.as_millis() as f32 / (10000.0 * 24.0)).fract());
             self.update_uniformf(&Uniform::TimeOfDay, tod);
             // println!("time of day is now {:?}",(time_elapsed.as_millis() as f32 / (1000.0 * 24.0)).fract());
+
+            for (&key, val) in &self.configurables {
+                if let (Some(uniform), ConfigurableValue::F32(v, _, _)) = (key.uniform(), val) {
+                    self.update_uniformf(&uniform, *v);
+                }
+            }
+
             self.update_uniformi(&Uniform::SunMode, 0);
 
             // println!("the thing0 is {}",self.gl.GetError());

@@ -104,8 +104,8 @@ void main() {
 //    float alpha = 0.001;
 //    float alpha = 0.01;
 //    float alpha = 1.0;
-//    float alpha = 0.1;
-    float alpha = 0.05;
+    float alpha = 0.1;
+//    float alpha = 0.05;
     pixelColor = vec4(mix(previousFrameLDR,currentFrameColor,alpha), 1.0);
 
 }

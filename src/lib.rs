@@ -29,7 +29,7 @@ use half::f16;
 use winit::dpi::PhysicalSize;
 use winit::platform::x11::WindowAttributesExtX11;
 use crate::gl::types::{GLenum, GLint};
-use crate::renderer::{Configurable, Renderer, RAYS_PER_FRAME, SUN_RAYS_PER_FRAME};
+use crate::renderer::{Configurable, ConfigurableValue, Renderer, RAYS_PER_FRAME, SUN_RAYS_PER_FRAME};
 
 pub mod gl {
     #![allow(clippy::all)]
@@ -236,30 +236,21 @@ impl ApplicationHandler for App {
             .map(|ew| ew.take_egui_input(window))
             .unwrap_or_default();
 
-        // Extract cloud configurable values into locals so they can be captured
-        // by the egui closure without holding a borrow on self.renderer.
-        macro_rules! cf32 { ($k:expr) => { self.renderer.as_ref().unwrap().get_f32_range($k) } }
-        macro_rules! ci32 { ($k:expr) => { self.renderer.as_ref().unwrap().get_i32_range($k) } }
-        let (mut c_coverage,   c_coverage_lo,   c_coverage_hi)   = cf32!(Configurable::CloudCoverage);
-        let (mut c_base_mult,  c_base_mult_lo,  c_base_mult_hi)  = cf32!(Configurable::CloudBaseMult);
-        let (mut c_detail,     c_detail_lo,     c_detail_hi)     = cf32!(Configurable::CloudDetailMult);
-        let (mut c_erosion,    c_erosion_lo,    c_erosion_hi)    = cf32!(Configurable::CloudErosionModifier);
-        let (mut c_cutoff,     c_cutoff_lo,     c_cutoff_hi)     = cf32!(Configurable::CloudCutoff);
-        let (mut c_x_off,      c_x_off_lo,      c_x_off_hi)     = cf32!(Configurable::CloudXOffset);
-        let (mut c_y_off,      c_y_off_lo,      c_y_off_hi)     = cf32!(Configurable::CloudYOffset);
-        let (mut c_depth,      c_depth_lo,      c_depth_hi)      = cf32!(Configurable::Cloud3DDepth);
-        let (mut c_fbm_lac,    c_fbm_lac_lo,    c_fbm_lac_hi)   = cf32!(Configurable::CloudFBMLacunarity);
-        let (mut c_fbm_gain,   c_fbm_gain_lo,   c_fbm_gain_hi)  = cf32!(Configurable::CloudFBMGain);
-        let (mut c_wrl_lac,    c_wrl_lac_lo,    c_wrl_lac_hi)   = cf32!(Configurable::CloudWorleyLacunarity);
-        let (mut c_wrl_gain,   c_wrl_gain_lo,   c_wrl_gain_hi)  = cf32!(Configurable::CloudWorleyGain);
-        let (mut c_fbm_oct,    c_fbm_oct_lo,    c_fbm_oct_hi)   = ci32!(Configurable::CloudFBMOctaves);
-        let (mut c_wrl_oct,    c_wrl_oct_lo,    c_wrl_oct_hi)   = ci32!(Configurable::CloudWorleyOctaves);
-        let (mut c_samples,    c_samples_lo,    c_samples_hi)   = ci32!(Configurable::Cloud3DSamples);
+        // Clone all configurable values into a local vec so the egui closure can
+        // hold mutable references without borrowing self.renderer.
+        let mut configurable_locals: Vec<(Configurable, ConfigurableValue)> =
+            Configurable::all().iter()
+                .map(|&k| (k, self.renderer.as_ref().unwrap().configurables[&k].clone()))
+                .collect();
 
-        // Build egui frame — split field borrows so the closure can capture
-        // &mut gui_state while egui_ctx is borrowed for the run() call.
+        // Pre-build group → index map (&'static str keys, no borrow on the vec).
+        let mut groups: std::collections::BTreeMap<&'static str, Vec<usize>> = Default::default();
+        for (i, (key, _)) in configurable_locals.iter().enumerate() {
+            groups.entry(key.group()).or_default().push(i);
+        }
+
+        let mut dirty_groups: std::collections::HashSet<&'static str> = Default::default();
         let mut accum_dirty = false;
-        let mut cloud_dirty = false;
         let gui = &mut self.gui_state;
         let full_output = self.egui_ctx.run(raw_input, |ctx| {
             egui::Window::new("Scene Controls")
@@ -275,30 +266,24 @@ impl ApplicationHandler for App {
                     ).changed() {
                         accum_dirty = true;
                     }
-                    ui.add(egui::Slider::new(&mut gui.sun_rays,     0u32..=80_000).text("Sun rays"));
+                    ui.add(egui::Slider::new(&mut gui.sun_rays,      0u32..=80_000).text("Sun rays"));
                     ui.add(egui::Slider::new(&mut gui.emissive_rays, 0u32..=80_000).text("Emissive rays"));
 
-                    ui.separator();
-                    ui.collapsing("Cloud", |ui| {
-                        let mut ch = |r: bool| { if r { cloud_dirty = true; } };
-                        ch(ui.add(egui::Slider::new(&mut c_coverage,  c_coverage_lo..=c_coverage_hi)  .text("Coverage")).changed());
-                        ch(ui.add(egui::Slider::new(&mut c_cutoff,    c_cutoff_lo..=c_cutoff_hi)      .text("Cutoff")).changed());
-                        ch(ui.add(egui::Slider::new(&mut c_base_mult, c_base_mult_lo..=c_base_mult_hi).text("Base mult")).changed());
-                        ch(ui.add(egui::Slider::new(&mut c_detail,    c_detail_lo..=c_detail_hi)      .text("Detail mult")).changed());
-                        ch(ui.add(egui::Slider::new(&mut c_erosion,   c_erosion_lo..=c_erosion_hi)    .text("Erosion")).changed());
-                        ch(ui.add(egui::Slider::new(&mut c_x_off,     c_x_off_lo..=c_x_off_hi)       .text("X offset")).changed());
-                        ch(ui.add(egui::Slider::new(&mut c_y_off,     c_y_off_lo..=c_y_off_hi)       .text("Y offset")).changed());
-                        ch(ui.add(egui::Slider::new(&mut c_depth,     c_depth_lo..=c_depth_hi)        .text("3D depth")).changed());
-                        ch(ui.add(egui::Slider::new(&mut c_samples,   c_samples_lo..=c_samples_hi)    .text("3D samples")).changed());
-                        ui.label("FBM noise");
-                        ch(ui.add(egui::Slider::new(&mut c_fbm_oct,   c_fbm_oct_lo..=c_fbm_oct_hi)   .text("Octaves")).changed());
-                        ch(ui.add(egui::Slider::new(&mut c_fbm_lac,   c_fbm_lac_lo..=c_fbm_lac_hi)   .text("Lacunarity")).changed());
-                        ch(ui.add(egui::Slider::new(&mut c_fbm_gain,  c_fbm_gain_lo..=c_fbm_gain_hi)  .text("Gain")).changed());
-                        ui.label("Worley noise");
-                        ch(ui.add(egui::Slider::new(&mut c_wrl_oct,   c_wrl_oct_lo..=c_wrl_oct_hi)   .text("Octaves")).changed());
-                        ch(ui.add(egui::Slider::new(&mut c_wrl_lac,   c_wrl_lac_lo..=c_wrl_lac_hi)   .text("Lacunarity")).changed());
-                        ch(ui.add(egui::Slider::new(&mut c_wrl_gain,  c_wrl_gain_lo..=c_wrl_gain_hi)  .text("Gain")).changed());
-                    });
+                    for (group_name, indices) in &groups {
+                        ui.separator();
+                        ui.collapsing(*group_name, |ui| {
+                            for &i in indices {
+                                let (key, val) = &mut configurable_locals[i];
+                                let changed = match val {
+                                    ConfigurableValue::F32(v, min, max) =>
+                                        ui.add(egui::Slider::new(v, *min..=*max).text(key.label())).changed(),
+                                    ConfigurableValue::I32(v, min, max) =>
+                                        ui.add(egui::Slider::new(v, *min..=*max).text(key.label())).changed(),
+                                };
+                                if changed { dirty_groups.insert(key.group()); }
+                            }
+                        });
+                    }
                 });
         });
         let _ = accum_dirty;
@@ -309,23 +294,16 @@ impl ApplicationHandler for App {
         renderer.set_sun_rays(Some(gui.sun_rays));
         renderer.set_emissive_rays(Some(gui.emissive_rays));
 
-        if cloud_dirty {
-            renderer.set_configurable_f32(Configurable::CloudCoverage,         c_coverage);
-            renderer.set_configurable_f32(Configurable::CloudBaseMult,          c_base_mult);
-            renderer.set_configurable_f32(Configurable::CloudDetailMult,        c_detail);
-            renderer.set_configurable_f32(Configurable::CloudErosionModifier,   c_erosion);
-            renderer.set_configurable_f32(Configurable::CloudCutoff,            c_cutoff);
-            renderer.set_configurable_f32(Configurable::CloudXOffset,           c_x_off);
-            renderer.set_configurable_f32(Configurable::CloudYOffset,           c_y_off);
-            renderer.set_configurable_f32(Configurable::Cloud3DDepth,           c_depth);
-            renderer.set_configurable_f32(Configurable::CloudFBMLacunarity,     c_fbm_lac);
-            renderer.set_configurable_f32(Configurable::CloudFBMGain,           c_fbm_gain);
-            renderer.set_configurable_f32(Configurable::CloudWorleyLacunarity,  c_wrl_lac);
-            renderer.set_configurable_f32(Configurable::CloudWorleyGain,        c_wrl_gain);
-            renderer.set_configurable_i32(Configurable::CloudFBMOctaves,        c_fbm_oct);
-            renderer.set_configurable_i32(Configurable::CloudWorleyOctaves,     c_wrl_oct);
-            renderer.set_configurable_i32(Configurable::Cloud3DSamples,         c_samples);
-            renderer.regenerate_scene();
+        if !dirty_groups.is_empty() {
+            for (key, val) in &configurable_locals {
+                match val {
+                    ConfigurableValue::F32(v, _, _) => renderer.set_configurable_f32(*key, *v),
+                    ConfigurableValue::I32(v, _, _) => renderer.set_configurable_i32(*key, *v),
+                }
+            }
+            if dirty_groups.contains("Cloud") {
+                renderer.regenerate_scene();
+            }
         }
 
         // Run the OpenGL render

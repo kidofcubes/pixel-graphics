@@ -18,6 +18,9 @@
 #define SUNMODE         3
 #define REALTIME        4
 #define RAYSTOEMIT      5
+#define DEBUGFLOAT0     6
+#define DEBUGFLOAT1     7
+#define DEBUGFLOAT2     8
 
 
 //SSBO BINDINGS
@@ -34,6 +37,10 @@
 #define OUTPUTCOUNT     9
 
 //LAYOUT INDEXES END
+
+layout(location = DEBUGFLOAT0) uniform float debugFloat0;
+layout(location = DEBUGFLOAT1) uniform float debugFloat1;
+layout(location = DEBUGFLOAT2) uniform float debugFloat2;
 
 #define KEEP_FRAMES 100
 #define COMPUTE_MULTIPLIER 1000000
