@@ -253,37 +253,40 @@ impl ApplicationHandler for App {
         let mut accum_dirty = false;
         let gui = &mut self.gui_state;
         let full_output = self.egui_ctx.run(raw_input, |ctx| {
+            ctx.set_pixels_per_point(1.5);
             egui::Window::new("Scene Controls")
-                .resizable(false)
+                .resizable(true)
                 .show(ctx, |ui| {
-                    if ui.checkbox(&mut gui.manual_time, "Manual time").changed() {
-                        accum_dirty = true;
-                    }
-                    if ui.add_enabled(
-                        gui.manual_time,
-                        egui::Slider::new(&mut gui.time_of_day, 0.0f32..=1.0)
-                            .text("Time of Day"),
-                    ).changed() {
-                        accum_dirty = true;
-                    }
-                    ui.add(egui::Slider::new(&mut gui.sun_rays,      0u32..=80_000).text("Sun rays"));
-                    ui.add(egui::Slider::new(&mut gui.emissive_rays, 0u32..=80_000).text("Emissive rays"));
+                    egui::ScrollArea::vertical().show(ui, |ui| {
+                        if ui.checkbox(&mut gui.manual_time, "Manual time").changed() {
+                            accum_dirty = true;
+                        }
+                        if ui.add_enabled(
+                            gui.manual_time,
+                            egui::Slider::new(&mut gui.time_of_day, 0.0f32..=1.0)
+                                .text("Time of Day"),
+                        ).changed() {
+                            accum_dirty = true;
+                        }
+                        ui.add(egui::Slider::new(&mut gui.sun_rays,      0u32..=80_000).text("Sun rays"));
+                        ui.add(egui::Slider::new(&mut gui.emissive_rays, 0u32..=80_000).text("Emissive rays"));
 
-                    for (group_name, indices) in &groups {
-                        ui.separator();
-                        ui.collapsing(*group_name, |ui| {
-                            for &i in indices {
-                                let (key, val) = &mut configurable_locals[i];
-                                let changed = match val {
-                                    ConfigurableValue::F32(v, min, max) =>
-                                        ui.add(egui::Slider::new(v, *min..=*max).text(key.label())).changed(),
-                                    ConfigurableValue::I32(v, min, max) =>
-                                        ui.add(egui::Slider::new(v, *min..=*max).text(key.label())).changed(),
-                                };
-                                if changed { dirty_groups.insert(key.group()); }
-                            }
-                        });
-                    }
+                        for (group_name, indices) in &groups {
+                            ui.separator();
+                            ui.collapsing(*group_name, |ui| {
+                                for &i in indices {
+                                    let (key, val) = &mut configurable_locals[i];
+                                    let changed = match val {
+                                        ConfigurableValue::F32(v, min, max) =>
+                                            ui.add(egui::Slider::new(v, *min..=*max).text(key.label())).changed(),
+                                        ConfigurableValue::I32(v, min, max) =>
+                                            ui.add(egui::Slider::new(v, *min..=*max).text(key.label())).changed(),
+                                    };
+                                    if changed { dirty_groups.insert(key.group()); }
+                                }
+                            });
+                        }
+                    });
                 });
         });
         let _ = accum_dirty;
@@ -313,7 +316,7 @@ impl ApplicationHandler for App {
         if let (Some(painter), Some(ew)) =
             (self.egui_painter.as_mut(), self.egui_winit.as_mut())
         {
-            let ppp = window.scale_factor() as f32;
+            let ppp = self.egui_ctx.pixels_per_point();
             let size = window.inner_size();
             let prims = self.egui_ctx.tessellate(full_output.shapes, ppp);
             painter.paint_and_update_textures(

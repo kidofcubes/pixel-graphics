@@ -642,9 +642,9 @@ impl Renderer {
             configurables.insert(CloudDensityMultiplier,    F32(0.5,  0.0,  1.0));
             configurables.insert(CloudThicknessExponent,    F32(0.5,  0.0,  1.0));
             configurables.insert(CloudThicknessMultiplier,  F32(0.5,  0.0,  1.0));
-            configurables.insert(DebugFloat0,               F32(0.0,  1.0,  10.0));
-            configurables.insert(DebugFloat1,               F32(0.0,  1.0,  10.0));
-            configurables.insert(DebugFloat2,               F32(0.0,  1.0,  10.0));
+            configurables.insert(DebugFloat0,               F32(1.0,  0.0,  1.0));
+            configurables.insert(DebugFloat1,               F32(1.0,  0.0,  1.0));
+            configurables.insert(DebugFloat2,               F32(1.0,  0.0,  1.0));
 
             let mut renderer = Self {
                 programs,
