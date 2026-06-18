@@ -504,7 +504,8 @@ float sampleBiasedAngle(float currentAngle, float g, float rngValue) {
     float biasedScatterAngle = mix(uniformScatterAngle, 0.0, abs(g));
 
     // Combine with the current angle
-    return currentAngle + biasedScatterAngle;
+//    return currentAngle + biasedScatterAngle;
+    return currentAngle + 0.5;
 }
 
 

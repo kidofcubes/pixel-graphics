@@ -89,7 +89,7 @@ void main() {
         vec3 sky_color = background_sky_color(vec2(pos), normalize(vec2(-0.5, -0.5)), vec3(1.0, 0.9, 0.6), 0.0);
         if(scenePixel.density < 1){
 //            currentFrameColor = mix(sky_color, currentFrameColor, scenePixel.density);
-//            currentFrameColor = (sky_color*(1.0-scenePixel.density)) + currentFrameColor;
+            currentFrameColor = (sky_color*(1.0-scenePixel.density)) + currentFrameColor;
         }
     }
 
@@ -102,9 +102,10 @@ void main() {
     vec4 previousFrameData = texelFetch(fb0tex, pos, 0);
     vec3 previousFrameLDR = previousFrameData.rgb;
 //    float alpha = 0.001;
-    float alpha = 0.01;
+//    float alpha = 0.01;
 //    float alpha = 1.0;
 //    float alpha = 0.1;
+    float alpha = 0.05;
     pixelColor = vec4(mix(previousFrameLDR,currentFrameColor,alpha), 1.0);
 
 }

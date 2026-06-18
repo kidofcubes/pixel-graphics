@@ -119,11 +119,11 @@ void march_ray(in Ray ray, int tile_x0, int tile_y0) {
 
 
         //DO SHIT IN JUST PASSED PIXEL
-        rngState = noise3(rngState, fract(float(s)/maxSteps) + fract(pos.x), (float(gl_LocalInvocationID.x)/float(gl_WorkGroupSize.x))+fract(pos.y));
+        rngState = fract(noise3(rngState, fract(float(s)/maxSteps) + fract(pos.x), (float(gl_LocalInvocationID.x)/float(gl_WorkGroupSize.x))+fract(pos.y)));
         if(rngState > px.thickness){
 //        if(false){
 
-        } else if(px.density == 0.0 || rayType==2){
+        } else if(false&&(px.density == 0.0 || rayType==2)){
             if (rayType==2){
                 if (px.density<1.0){
                     atomicAdd(accum_r[local_idx], uint(energy.r * COMPUTE_MULTIPLIER_PORPORTION));
@@ -150,8 +150,8 @@ void march_ray(in Ray ray, int tile_x0, int tile_y0) {
             rngState = noise2(rngState, float(s) + pos.x);
             float roll = fract(rngState);
             float maxScat = max(max(px.scattering.x, px.scattering.y), px.scattering.z);
-            if (roll < maxScat * px.density * pixel_length&&false) {
-                float g = 0.75;
+            if (roll < maxScat * px.density * pixel_length) {
+                float g = 0.8;
                 float newAng = sampleBiasedAngle(atan(dir.y, dir.x), g, noise3(rngState, pos.x, pos.y));
                 dir = vec2(cos(newAng), sin(newAng));
                 if (dir.x == 0.0) dir.x = FLT_MIN;
@@ -161,7 +161,7 @@ void march_ray(in Ray ray, int tile_x0, int tile_y0) {
                 offX  = dir.x > 0.0 ? 1 : 0;
                 offY  = dir.y > 0.0 ? 1 : 0;
             }
-        } else {
+        } else if(px.density==1.0){
 
             // Surface hit
             vec2 normal = stepIsX ? vec2(-float(stepX), 0.0) : vec2(0.0, -float(stepY));

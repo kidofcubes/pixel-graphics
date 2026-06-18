@@ -164,6 +164,7 @@ impl crate::renderer::Renderer {
                 if (pixel.density >= 1.0) {
                     continue;
                 }
+                pixel.density = 0.00;
                 // let fbm_value = (fbm(vec2(x as f32, y as f32)/50.0, 1.0) / (num_octaves as f32*2.0f32))+0.5;
                 let pos_mult: f32 = 0.5;
                 // let fbm_value = (noise.get_noise_2d(x as f32 * pos_mult,y as f32 * pos_mult)+1.0)/2.0;
@@ -243,8 +244,11 @@ impl crate::renderer::Renderer {
             // pixel_data.transmission = 0.1;
             // pixel_data.reflectiveness= 0.99;
             pixel_data.density = 1.0;
-            pixel_data.transmission = 0.6;
+            pixel_data.transmission = 0.0;
             pixel_data.reflectiveness= 0.0;
+        }
+        if(r==53){ //the grey
+            pixel_data.thickness = 0.2;
         }
         if(r==35){ //the tree leaves
             pixel_data.thickness = 0.1;

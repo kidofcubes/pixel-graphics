@@ -11,7 +11,7 @@ use crate::{gl, glutils};
 use crate::gl::types::{GLint, GLsizeiptr, GLuint};
 use image::RgbaImage;
 use std::mem;
-use std::time::{Instant, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use winit::event::KeyEvent;
 use crate::glutils::{create_texture, generate_light_data, load_image};
 use crate::renderer::Configurable::{
@@ -227,6 +227,7 @@ pub struct Renderer {
     pub time_of_day_override: Option<f32>,
     pub sun_rays_override: Option<u32>,
     pub emissive_rays_override: Option<u32>,
+    regen_scheduled_at: Option<Instant>,
 }
 
 impl Renderer {
@@ -269,9 +270,20 @@ impl Renderer {
         }
     }
 
+    /// Schedule a scene regeneration 1 second from now. Repeated calls while
+    /// the timer is pending just push the deadline forward, so fast slider
+    /// dragging only triggers one rebuild once the user stops.
     pub fn regenerate_scene(&mut self) {
+        self.regen_scheduled_at = Some(Instant::now() + Duration::from_secs(1));
+    }
+
+    fn do_regenerate_scene(&mut self) {
         let scene = self.scene.clone();
+        let before = Instant::now();
         self.pixel_data = self.get_scene_data(&scene, 0.0);
+        self.light_data = generate_light_data(scene.width(), scene.height(), &self.pixel_data);
+        let after = Instant::now();
+        println!("Regenerated scene in {:?}", after - before);
         unsafe {
             let total_size = scene.width() as usize * scene.height() as usize * mem::size_of::<PixelData>();
             std::ptr::copy_nonoverlapping(
@@ -280,7 +292,6 @@ impl Renderer {
                 total_size,
             );
         }
-        self.light_data = generate_light_data(scene.width(), scene.height(), &self.pixel_data);
     }
 
     pub fn new<D: GlDisplay>(gl_display: &D) -> Self {
@@ -580,6 +591,7 @@ impl Renderer {
                 time_of_day_override: None,
                 sun_rays_override: None,
                 emissive_rays_override: None,
+                regen_scheduled_at: None,
             };
 
 
@@ -625,6 +637,13 @@ impl Renderer {
     }
 
     pub fn draw(&mut self) {
+        if let Some(deadline) = self.regen_scheduled_at {
+            if Instant::now() >= deadline {
+                self.regen_scheduled_at = None;
+                self.do_regenerate_scene();
+            }
+        }
+
         let new_time = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_millis() as u64;
         let fps = 1000.0/((new_time-self.last_frame) as f64);
         println!("fps is {:?} frame is {:?}",fps, self.frame);
