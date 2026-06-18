@@ -2,12 +2,7 @@ use fastnoise_lite::{FastNoiseLite, FractalType, NoiseType};
 use glam::{vec2, vec3, FloatExt, Vec2, Vec3};
 use image::RgbaImage;
 use crate::glutils::generate_pixel_data;
-use crate::renderer::Configurable::{
-    Cloud3DDepth, Cloud3DSamples, CloudBaseMult, CloudCoverage, CloudCutoff,
-    CloudDetailMult, CloudErosionModifier, CloudFBMGain, CloudFBMLacunarity,
-    CloudFBMOctaves, CloudWorleyGain, CloudWorleyLacunarity, CloudWorleyOctaves,
-    CloudXOffset, CloudYOffset,
-};
+use crate::renderer::Configurable::{Cloud3DDepth, Cloud3DSamples, CloudBaseMult, CloudCoverage, CloudCutoff, CloudDensityExponent, CloudDensityMultiplier, CloudDetailMult, CloudErosionModifier, CloudFBMGain, CloudFBMLacunarity, CloudFBMOctaves, CloudThicknessExponent, CloudThicknessMultiplier, CloudWorleyGain, CloudWorleyLacunarity, CloudWorleyOctaves, CloudXOffset, CloudYOffset};
 
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]
@@ -181,12 +176,14 @@ impl crate::renderer::Renderer {
                 // pixel.transmission=0.96;
                 // pixel.density = 0.0 + (normalized_post_cutoff / 5.0);
                 // pixel.density = 0.0 + f32::powf(normalized_post_cutoff / 1.0, 2.0);
-                pixel.density = 0.0 + f32::powf(normalized_post_cutoff / 1.0, 0.5) * 0.25;
+                // pixel.density = 0.0 + f32::powf(normalized_post_cutoff / 1.0, 0.5) * 0.25;
+                pixel.density = 0.0 + f32::powf(normalized_post_cutoff / 1.0, self.get_f32(CloudDensityExponent)) * self.get_f32(CloudDensityMultiplier);
                 // pixel.density = 0.5;
                 // pixel.density = 0.9;
                 // pixel.thickness = 0.0 + (normalized_post_cutoff / 2.0);
                 // pixel.thickness = 0.0 + f32::powf(normalized_post_cutoff / 1.0, 0.5) * 0.5;
-                pixel.thickness = 0.25;
+                // pixel.thickness = 0.25;
+                pixel.thickness = 0.0 + f32::powf(normalized_post_cutoff / 1.0, self.get_f32(CloudThicknessExponent)) * self.get_f32(CloudThicknessMultiplier);
 
                 // pixel.scattering = Vec3::lerp(AIR_SCATTERING,vec3(1.0,1.0,1.0), normalized_post_cutoff);
                 pixel.scattering = vec3(1.0, 1.0, 1.0);

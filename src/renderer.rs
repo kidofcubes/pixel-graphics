@@ -14,12 +14,7 @@ use std::mem;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use winit::event::KeyEvent;
 use crate::glutils::{create_texture, generate_light_data, load_image};
-use crate::renderer::Configurable::{
-    Cloud3DDepth, Cloud3DSamples, CloudBaseMult, CloudCoverage, CloudCutoff,
-    CloudDetailMult, CloudErosionModifier, CloudFBMGain, CloudFBMLacunarity,
-    CloudFBMOctaves, CloudWorleyGain, CloudWorleyLacunarity, CloudWorleyOctaves,
-    CloudXOffset, CloudYOffset,
-};
+use crate::renderer::Configurable::{Cloud3DDepth, Cloud3DSamples, CloudBaseMult, CloudCoverage, CloudCutoff, CloudDensityExponent, CloudDensityMultiplier, CloudDetailMult, CloudErosionModifier, CloudFBMGain, CloudFBMLacunarity, CloudFBMOctaves, CloudThicknessExponent, CloudThicknessMultiplier, CloudWorleyGain, CloudWorleyLacunarity, CloudWorleyOctaves, CloudXOffset, CloudYOffset};
 use crate::renderer::ConfigurableValue::{F32, I32};
 use crate::scene::PixelData;
 
@@ -203,6 +198,10 @@ pub enum Configurable {
     CloudWorleyLacunarity,
     CloudWorleyGain,
     CloudCutoff,
+    CloudDensityExponent,
+    CloudDensityMultiplier,
+    CloudThicknessExponent,
+    CloudThicknessMultiplier,
 }
 
 pub struct Renderer {
@@ -552,21 +551,25 @@ impl Renderer {
             );
 
             let mut configurables = HashMap::new();
-            configurables.insert(CloudFBMOctaves,        I32(4,    1,    12));
-            configurables.insert(CloudFBMLacunarity,     F32(2.0,  0.5,  8.0));
-            configurables.insert(CloudFBMGain,           F32(0.5,  0.0,  1.0));
-            configurables.insert(CloudWorleyOctaves,     I32(4,    1,    8));
-            configurables.insert(CloudWorleyLacunarity,  F32(2.0,  0.5,  8.0));
-            configurables.insert(CloudWorleyGain,        F32(0.75, 0.0,  1.0));
-            configurables.insert(CloudCoverage,          F32(0.5,  0.0,  1.0));
-            configurables.insert(CloudBaseMult,          F32(0.25, 0.01, 5.0));
-            configurables.insert(CloudDetailMult,        F32(6.0,  0.1,  20.0));
-            configurables.insert(Cloud3DSamples,         I32(1,    1,    128));
-            configurables.insert(Cloud3DDepth,           F32(2.0,  0.1,  10.0));
-            configurables.insert(CloudErosionModifier,   F32(0.25, 0.0,  2.0));
-            configurables.insert(CloudXOffset,           F32(0.0,  -500.0, 500.0));
-            configurables.insert(CloudYOffset,           F32(0.0,  -500.0, 500.0));
-            configurables.insert(CloudCutoff,            F32(0.5,  0.0,  1.0));
+            configurables.insert(CloudFBMOctaves,           I32(4,    1,    12));
+            configurables.insert(CloudFBMLacunarity,        F32(2.0,  0.5,  8.0));
+            configurables.insert(CloudFBMGain,              F32(0.5,  0.0,  1.0));
+            configurables.insert(CloudWorleyOctaves,        I32(4,    1,    8));
+            configurables.insert(CloudWorleyLacunarity,     F32(2.0,  0.5,  8.0));
+            configurables.insert(CloudWorleyGain,           F32(0.75, 0.0,  1.0));
+            configurables.insert(CloudCoverage,             F32(0.5,  0.0,  1.0));
+            configurables.insert(CloudBaseMult,             F32(0.25, 0.01, 5.0));
+            configurables.insert(CloudDetailMult,           F32(6.0,  0.1,  20.0));
+            configurables.insert(Cloud3DSamples,            I32(1,    1,    128));
+            configurables.insert(Cloud3DDepth,              F32(2.0,  0.1,  10.0));
+            configurables.insert(CloudErosionModifier,      F32(0.25, 0.0,  2.0));
+            configurables.insert(CloudXOffset,              F32(0.0,  -500.0, 500.0));
+            configurables.insert(CloudYOffset,              F32(0.0,  -500.0, 500.0));
+            configurables.insert(CloudCutoff,               F32(0.5,  0.0,  1.0));
+            configurables.insert(CloudDensityExponent,      F32(0.5,  0.0,  1.0));
+            configurables.insert(CloudDensityMultiplier,    F32(0.5,  0.0,  1.0));
+            configurables.insert(CloudThicknessExponent,    F32(0.5,  0.0,  1.0));
+            configurables.insert(CloudThicknessMultiplier,  F32(0.5,  0.0,  1.0));
 
             let mut renderer = Self {
                 programs,
