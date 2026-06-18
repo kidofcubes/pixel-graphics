@@ -164,38 +164,33 @@ impl crate::renderer::Renderer {
                 if (pixel.density >= 1.0) {
                     continue;
                 }
-                pixel.density = 0.00;
-                // let fbm_value = (fbm(vec2(x as f32, y as f32)/50.0, 1.0) / (num_octaves as f32*2.0f32))+0.5;
-                let pos_mult: f32 = 0.5;
-                // let fbm_value = (noise.get_noise_2d(x as f32 * pos_mult,y as f32 * pos_mult)+1.0)/2.0;
-                // let x_mult = f32::lerp(1.0,2.0,(height-y) as f32/100.0);
-                let x_mult = 1.0;
-                let fbm_value = (fbm_noise.get_noise_2d((x as f32 * x_mult) * pos_mult, y as f32 * pos_mult) + 1.0) / 2.0;
-                // pixel_data[(x+(y*width)) as usize].transmission=0.985;
-                let cutoff = self.get_f32(CloudCutoff);
-                if (fbm_value < cutoff) {
-                    // continue;
-                } else {
-                    // continue;
-                }
-                let mut normalized_post_cutoff = ((fbm_value - cutoff) / (1.0 - cutoff));
-                normalized_post_cutoff = self.sample_cloud_density2(
+
+                let mut normalized_post_cutoff = self.sample_cloud_density2(
                     vec2(x as f32 + self.get_f32(CloudXOffset), y as f32 + self.get_f32(CloudYOffset)),
                     self.get_f32(CloudBaseMult),
                     self.get_f32(CloudDetailMult),
                     &fbm_noise, &worley_noise,
                     self.get_f32(CloudCoverage),
                 );
+                if(normalized_post_cutoff<=0.0){
+                    continue;
+                }
                 // let mut normalized_post_cutoff = remap_density(fbm_value, cutoff, 3.0);
                 // normalized_post_cutoff = (normalized_post_cutoff * 16.0).round()/16.0;
 
                 // pixel.transmission=0.96;
-                pixel.density = 0.0 + (normalized_post_cutoff / 1.0);
-                pixel.density = 0.5;
-                pixel.thickness = 0.0 + (normalized_post_cutoff / 3.0);
+                // pixel.density = 0.0 + (normalized_post_cutoff / 5.0);
+                // pixel.density = 0.0 + f32::powf(normalized_post_cutoff / 1.0, 2.0);
+                pixel.density = 0.0 + f32::powf(normalized_post_cutoff / 1.0, 0.5) * 0.25;
+                // pixel.density = 0.5;
+                // pixel.density = 0.9;
+                // pixel.thickness = 0.0 + (normalized_post_cutoff / 2.0);
+                // pixel.thickness = 0.0 + f32::powf(normalized_post_cutoff / 1.0, 0.5) * 0.5;
+                pixel.thickness = 0.25;
 
                 // pixel.scattering = Vec3::lerp(AIR_SCATTERING,vec3(1.0,1.0,1.0), normalized_post_cutoff);
-                pixel.scattering = vec3(0.9, 0.9, 1.0);
+                pixel.scattering = vec3(1.0, 1.0, 1.0);
+                // pixel.scattering *= 0.5;
                 // pixel.albedo = Vec3::lerp(AIR_COLOR,vec3(1.0,1.0,1.0),normalized_post_cutoff);
                 pixel.albedo = AIR_COLOR;
             }

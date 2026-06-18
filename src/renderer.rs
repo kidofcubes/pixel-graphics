@@ -274,7 +274,7 @@ impl Renderer {
     /// the timer is pending just push the deadline forward, so fast slider
     /// dragging only triggers one rebuild once the user stops.
     pub fn regenerate_scene(&mut self) {
-        self.regen_scheduled_at = Some(Instant::now() + Duration::from_secs(1));
+        self.regen_scheduled_at = Some(Instant::now() + Duration::from_millis(000));
     }
 
     fn do_regenerate_scene(&mut self) {
@@ -561,7 +561,7 @@ impl Renderer {
             configurables.insert(CloudCoverage,          F32(0.5,  0.0,  1.0));
             configurables.insert(CloudBaseMult,          F32(0.25, 0.01, 5.0));
             configurables.insert(CloudDetailMult,        F32(6.0,  0.1,  20.0));
-            configurables.insert(Cloud3DSamples,         I32(64,   1,    128));
+            configurables.insert(Cloud3DSamples,         I32(1,    1,    128));
             configurables.insert(Cloud3DDepth,           F32(2.0,  0.1,  10.0));
             configurables.insert(CloudErosionModifier,   F32(0.25, 0.0,  2.0));
             configurables.insert(CloudXOffset,           F32(0.0,  -500.0, 500.0));
@@ -689,13 +689,13 @@ impl Renderer {
 
 
             // Copy the new Rust data directly into the mapped GPU memory pointer
-            if(self.frame%100==0) {
+            // if(self.frame%100==0) {
                 std::ptr::copy_nonoverlapping(
                     self.pixel_data.as_ptr() as *const c_void,
                     self.scene_mapped_ptr,
                     total_size,
                 );
-            }
+            // }
 
             let time_elapsed = Instant::now().duration_since(self.start_time);
             self.update_uniformi(&Uniform::RealTime, time_elapsed.as_millis() as i32);

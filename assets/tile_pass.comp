@@ -143,16 +143,16 @@ void march_ray(in Ray ray, int tile_x0, int tile_y0) {
             atomicAdd(accum_g[local_idx], uint(scattered.g * COMPUTE_MULTIPLIER_PORPORTION));
             atomicAdd(accum_b[local_idx], uint(scattered.b * COMPUTE_MULTIPLIER_PORPORTION));
 
-            energy.r *= exp(-(px.scattering.r + px.absorption.r) * px.density * pixel_length);
-            energy.g *= exp(-(px.scattering.g + px.absorption.g) * px.density * pixel_length);
-            energy.b *= exp(-(px.scattering.b + px.absorption.b) * px.density * pixel_length);
+            energy.r *= exp(-(px.scattering.r + px.absorption.r) * 0.25 * px.density * pixel_length);
+            energy.g *= exp(-(px.scattering.g + px.absorption.g) * 0.25 * px.density * pixel_length);
+            energy.b *= exp(-(px.scattering.b + px.absorption.b) * 0.25 * px.density * pixel_length);
 
             rngState = noise2(rngState, float(s) + pos.x);
             float roll = fract(rngState);
             float maxScat = max(max(px.scattering.x, px.scattering.y), px.scattering.z);
             if (roll < maxScat * px.density * pixel_length) {
                 float g = 0.8;
-                float newAng = sampleBiasedAngle(atan(dir.y, dir.x), g, noise3(rngState, pos.x, pos.y));
+                float newAng = sampleBiasedAngle(atan(dir.y, dir.x), g, noise3(rngState, float(frame) / 1000.0 + pos.x, pos.y));
                 dir = vec2(cos(newAng), sin(newAng));
                 if (dir.x == 0.0) dir.x = FLT_MIN;
                 if (dir.y == 0.0) dir.y = FLT_MIN;

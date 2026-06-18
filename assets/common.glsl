@@ -287,8 +287,6 @@ float logfloat(uint x, vec2 range, int bits)
 const float PI  = 3.14159265358979323846;
 const float PHI = 1.61803398875;
 
-#define M_PI 3.141592653
-
 vec2 fibonacci_lattice(int i, float N)
 {
     return vec2((float(i)+0.5)/N, mod(float(i)/PHI, 1.));
@@ -297,7 +295,7 @@ vec2 fibonacci_lattice(int i, float N)
 vec3 fibonacciDecode(int i, float N)
 {
     vec2 xy = fibonacci_lattice(i, N);
-    vec2 pt = vec2(2.*M_PI*xy.y, acos(2.*xy.x - 1.) - M_PI*0.5);
+    vec2 pt = vec2(2.*PI*xy.y, acos(2.*xy.x - 1.) - PI*0.5);
     return vec3(cos(pt.x)*cos(pt.y), sin(pt.x)*cos(pt.y), sin(pt.y));
 }
 
@@ -504,8 +502,7 @@ float sampleBiasedAngle(float currentAngle, float g, float rngValue) {
     float biasedScatterAngle = mix(uniformScatterAngle, 0.0, abs(g));
 
     // Combine with the current angle
-//    return currentAngle + biasedScatterAngle;
-    return currentAngle + 0.5;
+    return currentAngle + biasedScatterAngle;
 }
 
 

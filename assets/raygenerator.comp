@@ -182,9 +182,9 @@ void main() {
         // Random spawn point on the wavefront slab, pulled back along -sunDir
         // by more than an image diagonal so the entry march below is sure to
         // clip back to the image boundary from outside.
-        float perpT = noise2(float(rayIndex) / 1.0, float(frame) / 10000.0);
+        float perpT = noise2(float(rayIndex) / 100.0, float(frame) / 10000.0);
         perpT = fract(perpT * 100.0); //i think the noise is biased towards 0 and 1 so this helps mitigate it slightly
-        perpT=fract(rayIndex/16000.0); //temporary smooth noise
+//        perpT=fract(rayIndex/16000.0); //temporary smooth noise
         perpT=fract(perpT+(noise2(float(rayIndex) / 1.0, float(frame) / 10000.0)/10000.0));
         float pullbackDist = distance(vec2(0.0),vec2(float(RESOLUTIONX)/2.0, float(RESOLUTIONY)/2.0)) + 1.0;
 //        float pullbackDist = 1000.0;
@@ -232,7 +232,7 @@ void main() {
             spawnPos.y < 0.0 || spawnPos.y > float(RESOLUTIONY)) return;
 
         // Warm sunlight, total flux split evenly across all rays this frame.
-        vec3 sunEnergy = vec3(1.0, 0.9, 0.6) * 50000.0 / float(raysToEmit);
+        vec3 sunEnergy = vec3(1.0, 0.9, 0.6) * 10000.0 / float(raysToEmit);
 //        vec3 sunEnergy = vec3(1.0, 0.9, 0.6) * 5000.0 / float(raysToEmit);
         sunEnergy = sun_pass_through_simulate(
             vec2(0.0), sunEnergy, dist,
